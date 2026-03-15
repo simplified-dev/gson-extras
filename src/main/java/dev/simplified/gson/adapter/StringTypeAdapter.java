@@ -6,6 +6,7 @@ import com.google.gson.stream.JsonWriter;
 import dev.sbs.api.io.gson.GsonSettings;
 import dev.sbs.api.util.StringUtil;
 import lombok.RequiredArgsConstructor;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
@@ -15,7 +16,7 @@ public class StringTypeAdapter extends TypeAdapter<String> {
     private final GsonSettings.StringType stringType;
 
     @Override
-    public void write(JsonWriter out, String value) throws IOException {
+    public void write(@NotNull JsonWriter out, @NotNull String value) throws IOException {
         if (StringUtil.isEmpty(value)) {
             if (this.stringType == GsonSettings.StringType.EMPTY) {
                 out.value("");
@@ -30,7 +31,7 @@ public class StringTypeAdapter extends TypeAdapter<String> {
     }
 
     @Override
-    public String read(JsonReader in) throws IOException {
+    public String read(@NotNull JsonReader in) throws IOException {
         String value = in.nextString();
 
         if (StringUtil.isEmpty(value)) {

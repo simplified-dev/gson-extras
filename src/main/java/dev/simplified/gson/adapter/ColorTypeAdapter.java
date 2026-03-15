@@ -4,6 +4,7 @@ import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import dev.sbs.api.util.StringUtil;
+import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
 import java.io.IOException;
@@ -11,7 +12,7 @@ import java.io.IOException;
 public class ColorTypeAdapter extends TypeAdapter<Color> {
 
     @Override
-    public void write(JsonWriter out, Color value) throws IOException {
+    public void write(@NotNull JsonWriter out, @NotNull Color value) throws IOException {
         int rgba = (value.getRed() << 24) |
             (value.getGreen() << 16) |
             (value.getBlue() << 8) |
@@ -21,7 +22,7 @@ public class ColorTypeAdapter extends TypeAdapter<Color> {
     }
 
     @Override
-    public Color read(JsonReader in) throws IOException {
+    public Color read(@NotNull JsonReader in) throws IOException {
         try {
             return new Color(in.nextInt(), true);
         } catch (Exception ex) {

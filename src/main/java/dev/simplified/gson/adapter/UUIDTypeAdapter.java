@@ -4,6 +4,7 @@ import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import dev.sbs.api.util.StringUtil;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -11,12 +12,12 @@ import java.util.UUID;
 public class UUIDTypeAdapter extends TypeAdapter<UUID> {
 
     @Override
-    public void write(JsonWriter out, UUID value) throws IOException {
+    public void write(@NotNull JsonWriter out, @NotNull UUID value) throws IOException {
         out.value(value.toString());
     }
 
     @Override
-    public UUID read(JsonReader in) throws IOException {
+    public UUID read(@NotNull JsonReader in) throws IOException {
         return StringUtil.toUUID(in.nextString());
     }
 
