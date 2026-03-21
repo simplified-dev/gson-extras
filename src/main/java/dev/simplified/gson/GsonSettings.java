@@ -25,17 +25,45 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Immutable configuration for building {@link Gson} instances.
+ * <p>
+ * Encapsulates formatting style, null serialization, date format, custom type
+ * adapters, and {@link TypeAdapterFactory} registrations. Use {@link #builder()}
+ * to construct a new instance or {@link #mutate()} to derive a modified copy.
+ * <p>
+ * Call {@link #create()} to produce a configured {@link Gson} instance.
+ *
+ * @see Builder
+ * @see StringType
+ */
 @Getter
 @RequiredArgsConstructor
 public class GsonSettings {
 
+    /** Date format pattern passed to {@link GsonBuilder#setDateFormat(String)}, if present. */
     private final @NotNull Optional<String> dateFormat;
+
+    /** Output formatting style applied to the {@link Gson} instance. */
     private final @NotNull FormattingStyle style;
+
+    /** Whether null values are included in serialized output. */
     private final boolean serializingNulls;
+
+    /** Strategy for handling empty and null strings during serialization. */
     private final @NotNull StringType stringType;
+
+    /** Per-type adapters registered with {@link GsonBuilder#registerTypeAdapter(Type, Object)}. */
     private final @NotNull ConcurrentMap<Type, Object> typeAdapters;
+
+    /** Adapter factories registered with {@link GsonBuilder#registerTypeAdapterFactory(TypeAdapterFactory)}. */
     private final @NotNull ConcurrentList<TypeAdapterFactory> factories;
 
+    /**
+     * Builds a new {@link Gson} instance from this configuration.
+     *
+     * @return a configured {@link Gson} instance
+     */
     public @NotNull Gson create() {
         GsonBuilder builder = new GsonBuilder();
         if (this.isSerializingNulls())
@@ -49,10 +77,21 @@ public class GsonSettings {
         return builder.create();
     }
 
+    /**
+     * Creates a new empty {@link Builder}.
+     *
+     * @return a new builder
+     */
     public static @NotNull Builder builder() {
         return new Builder();
     }
 
+    /**
+     * Creates a {@link Builder} pre-populated with the values from the given settings.
+     *
+     * @param gsonSettings the settings to copy from
+     * @return a pre-populated builder
+     */
     public static @NotNull Builder from(@NotNull GsonSettings gsonSettings) {
         return builder()
             .withDateFormat(gsonSettings.getDateFormat())
@@ -63,10 +102,18 @@ public class GsonSettings {
             .withFactories(gsonSettings.getFactories());
     }
 
+    /**
+     * Returns a {@link Builder} pre-populated with this instance's values for modification.
+     *
+     * @return a pre-populated builder
+     */
     public @NotNull Builder mutate() {
         return from(this);
     }
 
+    /**
+     * Fluent builder for constructing {@link GsonSettings} instances.
+     */
     public static class Builder implements ClassBuilder<GsonSettings> {
 
         private Optional<String> dateFormat = Optional.empty();
@@ -76,54 +123,106 @@ public class GsonSettings {
         private ConcurrentMap<Type, Object> typeAdapters = Concurrent.newMap();
         private ConcurrentList<TypeAdapterFactory> factories = Concurrent.newList();
 
+        /**
+         * Enables pretty-print formatting.
+         */
         public @NotNull Builder isPrettyPrint() {
             return this.isPrettyPrint(true);
         }
 
+        /**
+         * Sets whether pretty-print formatting is enabled.
+         *
+         * @param prettyPrint {@code true} for {@link FormattingStyle#PRETTY}, {@code false} for {@link FormattingStyle#COMPACT}
+         */
         public @NotNull Builder isPrettyPrint(boolean prettyPrint) {
             this.style = prettyPrint ? FormattingStyle.PRETTY : FormattingStyle.COMPACT;
             return this;
         }
 
+        /**
+         * Enables null serialization.
+         */
         public @NotNull Builder isSerializingNulls() {
             return this.isSerializingNulls(true);
         }
 
+        /**
+         * Sets whether null values are included in serialized output.
+         *
+         * @param value {@code true} to serialize nulls
+         */
         public @NotNull Builder isSerializingNulls(boolean value) {
             this.serializingNulls = value;
             return this;
         }
 
+        /**
+         * Removes a previously registered type adapter for the given type.
+         *
+         * @param type the type whose adapter should be removed
+         */
         public @NotNull Builder removeTypeAdapter(@NotNull Type type) {
             this.typeAdapters.remove(type);
             return this;
         }
 
+        /**
+         * Sets the date format pattern.
+         *
+         * @param dateFormat the date format string, or {@code null} to clear
+         */
         public @NotNull Builder withDateFormat(@Nullable String dateFormat) {
             this.dateFormat = Optional.ofNullable(dateFormat);
             return this;
         }
 
+        /**
+         * Sets the date format pattern using a format string and arguments.
+         *
+         * @param dateFormat the format string, or {@code null} to clear
+         * @param args       the format arguments
+         */
         public @NotNull Builder withDateFormat(@PrintFormat @Nullable String dateFormat, @Nullable Object... args) {
             this.dateFormat = StringUtil.formatNullable(dateFormat, args);
             return this;
         }
 
+        /**
+         * Sets the date format pattern from an {@link Optional}.
+         *
+         * @param dateFormat the date format, or {@link Optional#empty()} to clear
+         */
         public @NotNull Builder withDateFormat(@NotNull Optional<String> dateFormat) {
             this.dateFormat = dateFormat;
             return this;
         }
 
+        /**
+         * Appends one or more {@link TypeAdapterFactory} instances.
+         *
+         * @param factories the factories to register
+         */
         public @NotNull Builder withFactories(@NotNull TypeAdapterFactory... factories) {
             this.factories.addAll(factories);
             return this;
         }
 
+        /**
+         * Appends a collection of {@link TypeAdapterFactory} instances.
+         *
+         * @param factories the factories to register
+         */
         public @NotNull Builder withFactories(@NotNull Collection<TypeAdapterFactory> factories) {
             this.factories.addAll(factories);
             return this;
         }
 
+        /**
+         * Sets the output {@link FormattingStyle}.
+         *
+         * @param style the formatting style
+         */
         public @NotNull Builder withStyle(@NotNull FormattingStyle style) {
             this.style = style;
             return this;
@@ -184,16 +283,27 @@ public class GsonSettings {
             return this;
         }
 
+        /**
+         * Registers type adapters from a collection of entries.
+         *
+         * @param typeAdapters the entries to register
+         */
         public @NotNull Builder withTypeAdapters(@NotNull Collection<Map.Entry<Type, Object>> typeAdapters) {
             typeAdapters.forEach(entry -> this.typeAdapters.put(entry.getKey(), entry.getValue()));
             return this;
         }
 
+        /**
+         * Registers type adapters from a map.
+         *
+         * @param typeAdapters the type-to-adapter mappings to register
+         */
         public @NotNull Builder withTypeAdapters(@NotNull Map<Type, Object> typeAdapters) {
             this.typeAdapters.putAll(typeAdapters);
             return this;
         }
 
+        /** {@inheritDoc} */
         @Override
         public @NotNull GsonSettings build() {
             return new GsonSettings(
@@ -208,6 +318,9 @@ public class GsonSettings {
 
     }
 
+    /**
+     * Strategy controlling how empty and null strings are handled during serialization.
+     */
     public enum StringType {
 
         /**
