@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.util.UUID;
 
 @NoArgsConstructor
-public class UUIDTypeAdapter extends TypeAdapter<UUID> {
+public final class UUIDTypeAdapter extends TypeAdapter<UUID> {
 
     @Override
     public void write(@NotNull JsonWriter out, @NotNull UUID value) throws IOException {
@@ -19,7 +19,7 @@ public class UUIDTypeAdapter extends TypeAdapter<UUID> {
     }
 
     @Override
-    public UUID read(@NotNull JsonReader in) throws IOException {
+    public @NotNull UUID read(@NotNull JsonReader in) throws IOException {
         return StringUtil.toUUID(in.nextString());
     }
 

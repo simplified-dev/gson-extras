@@ -7,11 +7,12 @@ import dev.sbs.api.io.gson.GsonSettings;
 import dev.sbs.api.util.StringUtil;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 
 @RequiredArgsConstructor
-public class StringTypeAdapter extends TypeAdapter<String> {
+public final class StringTypeAdapter extends TypeAdapter<String> {
 
     private final @NotNull GsonSettings.StringType stringType;
 
@@ -31,7 +32,7 @@ public class StringTypeAdapter extends TypeAdapter<String> {
     }
 
     @Override
-    public String read(@NotNull JsonReader in) throws IOException {
+    public @Nullable String read(@NotNull JsonReader in) throws IOException {
         String value = in.nextString();
 
         if (StringUtil.isEmpty(value)) {

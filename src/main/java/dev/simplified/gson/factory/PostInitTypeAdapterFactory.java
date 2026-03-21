@@ -9,14 +9,15 @@ import com.google.gson.stream.JsonWriter;
 import dev.sbs.api.io.gson.PostInit;
 import lombok.extern.log4j.Log4j2;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 
 @Log4j2
-public class PostInitTypeAdapterFactory implements TypeAdapterFactory {
+public final class PostInitTypeAdapterFactory implements TypeAdapterFactory {
 
     @Override
-    public <T> TypeAdapter<T> create(@NotNull Gson gson, @NotNull TypeToken<T> type) {
+    public <T> @Nullable TypeAdapter<T> create(@NotNull Gson gson, @NotNull TypeToken<T> type) {
         if (!PostInit.class.isAssignableFrom(type.getRawType()))
             return null;
 

@@ -11,7 +11,7 @@ import java.awt.*;
 import java.io.IOException;
 
 @NoArgsConstructor
-public class ColorTypeAdapter extends TypeAdapter<Color> {
+public final class ColorTypeAdapter extends TypeAdapter<Color> {
 
     @Override
     public void write(@NotNull JsonWriter out, @NotNull Color value) throws IOException {
@@ -24,7 +24,7 @@ public class ColorTypeAdapter extends TypeAdapter<Color> {
     }
 
     @Override
-    public Color read(@NotNull JsonReader in) throws IOException {
+    public @NotNull Color read(@NotNull JsonReader in) throws IOException {
         try {
             return new Color(in.nextInt(), true);
         } catch (Exception ex) {

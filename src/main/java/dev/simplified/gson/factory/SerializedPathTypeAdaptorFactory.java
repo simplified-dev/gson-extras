@@ -16,6 +16,7 @@ import dev.sbs.api.util.StringUtil;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -27,7 +28,7 @@ import java.util.Objects;
 public final class SerializedPathTypeAdaptorFactory implements TypeAdapterFactory {
 
     @Override
-    public <T> TypeAdapter<T> create(final Gson gson, final TypeToken<T> typeToken) {
+    public <T> @NotNull TypeAdapter<T> create(final @NotNull Gson gson, final TypeToken<T> typeToken) {
         // Pick up the down stream type adapter to avoid infinite recursion
         final TypeAdapter<T> delegateAdapter = gson.getDelegateAdapter(this, typeToken);
         // Collect @SerializedPath annotated fields
@@ -149,7 +150,7 @@ public final class SerializedPathTypeAdaptorFactory implements TypeAdapterFactor
         private final String serializedName;
         private final ConcurrentList<String> jsonPathList;
 
-        private FieldInfo(Field field, String jsonPath) {
+        private FieldInfo(@NotNull Field field, String jsonPath) {
             this.field = field;
             this.jsonPath = jsonPath;
             this.jsonPathList = Concurrent.newList(StringUtil.split(jsonPath, "."));
@@ -159,7 +160,7 @@ public final class SerializedPathTypeAdaptorFactory implements TypeAdapterFactor
         }
 
         // Scan the given class for the JsonPathExpressionAnnotation
-        private static Collection<FieldInfo> of(Class<?> clazz) {
+        private static @NotNull Collection<FieldInfo> of(@NotNull Class<?> clazz) {
             Collection<FieldInfo> collection = new ArrayList<>();
 
             for (final Field field : clazz.getDeclaredFields()) {
