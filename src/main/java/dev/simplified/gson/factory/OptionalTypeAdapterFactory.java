@@ -10,6 +10,7 @@ import com.google.gson.stream.JsonWriter;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.lang.reflect.ParameterizedType;
@@ -21,7 +22,7 @@ public final class OptionalTypeAdapterFactory implements TypeAdapterFactory {
 
     @Override
     @SuppressWarnings("all")
-    public <T> TypeAdapter<T> create(Gson gson, TypeToken<T> type) {
+    public <T> @Nullable TypeAdapter<T> create(Gson gson, @NotNull TypeToken<T> type) {
         Class<T> rawType = (Class<T>) type.getRawType();
         if (rawType != Optional.class)
             return null;
@@ -40,7 +41,7 @@ public final class OptionalTypeAdapterFactory implements TypeAdapterFactory {
         private final @NotNull TypeAdapter<T> adapter;
 
         @Override
-        public void write(JsonWriter out, Optional<T> value) throws IOException {
+        public void write(JsonWriter out, @NotNull Optional<T> value) throws IOException {
             if (value.isPresent())
                 this.adapter.write(out, value.get());
             else
@@ -48,7 +49,7 @@ public final class OptionalTypeAdapterFactory implements TypeAdapterFactory {
         }
 
         @Override
-        public Optional<T> read(JsonReader in) throws IOException {
+        public Optional<T> read(@NotNull JsonReader in) throws IOException {
             if (in.peek() != JsonToken.NULL)
                 return Optional.ofNullable(this.adapter.read(in));
             else {
