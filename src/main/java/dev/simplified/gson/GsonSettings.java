@@ -181,7 +181,7 @@ public class GsonSettings {
          * Sets the date format pattern using a format string and arguments.
          *
          * @param dateFormat the format string, or {@code null} to clear
-         * @param args       the format arguments
+         * @param args the format arguments
          */
         public @NotNull Builder withDateFormat(@PrintFormat @Nullable String dateFormat, @Nullable Object... args) {
             this.dateFormat = StringUtil.formatNullable(dateFormat, args);
