@@ -1,5 +1,6 @@
 package dev.sbs.api.io.gson;
 
+import com.google.gson.ExclusionStrategy;
 import com.google.gson.FormattingStyle;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -59,6 +60,9 @@ public class GsonSettings {
     /** Adapter factories registered with {@link GsonBuilder#registerTypeAdapterFactory(TypeAdapterFactory)}. */
     private final @NotNull ConcurrentList<TypeAdapterFactory> factories;
 
+    /** Exclusion strategies applied to both serialization and deserialization. */
+    private final @NotNull ConcurrentList<ExclusionStrategy> exclusionStrategies;
+
     /**
      * Builds a new {@link Gson} instance from this configuration.
      *
@@ -66,14 +70,20 @@ public class GsonSettings {
      */
     public @NotNull Gson create() {
         GsonBuilder builder = new GsonBuilder();
-        if (this.isSerializingNulls())
-            builder.serializeNulls();
-
         builder.setFormattingStyle(this.getStyle());
         builder.setDateFormat(this.dateFormat.orElse(null));
         this.getFactories().forEach(builder::registerTypeAdapterFactory);
         this.getTypeAdapters().forEach(builder::registerTypeAdapter);
         builder.registerTypeAdapter(String.class, new StringTypeAdapter(this.getStringType()));
+
+        if (this.isSerializingNulls())
+            builder.serializeNulls();
+
+        this.getExclusionStrategies().forEach(strategy -> {
+            builder.addSerializationExclusionStrategy(strategy);
+            builder.addDeserializationExclusionStrategy(strategy);
+        });
+
         return builder.create();
     }
 
@@ -99,7 +109,8 @@ public class GsonSettings {
             .isSerializingNulls(gsonSettings.isSerializingNulls())
             .withStringType(gsonSettings.getStringType())
             .withTypeAdapters(gsonSettings.getTypeAdapters())
-            .withFactories(gsonSettings.getFactories());
+            .withFactories(gsonSettings.getFactories())
+            .withExclusionStrategies(gsonSettings.getExclusionStrategies());
     }
 
     /**
@@ -122,6 +133,7 @@ public class GsonSettings {
         private StringType stringType = StringType.DEFAULT;
         private ConcurrentMap<Type, Object> typeAdapters = Concurrent.newMap();
         private ConcurrentList<TypeAdapterFactory> factories = Concurrent.newList();
+        private ConcurrentList<ExclusionStrategy> exclusionStrategies = Concurrent.newList();
 
         /**
          * Enables pretty-print formatting.
@@ -219,6 +231,27 @@ public class GsonSettings {
         }
 
         /**
+         * Appends one or more {@link ExclusionStrategy} instances applied to both
+         * serialization and deserialization.
+         *
+         * @param strategies the exclusion strategies to register
+         */
+        public @NotNull Builder withExclusionStrategies(@NotNull ExclusionStrategy... strategies) {
+            this.exclusionStrategies.addAll(strategies);
+            return this;
+        }
+
+        /**
+         * Appends a collection of {@link ExclusionStrategy} instances.
+         *
+         * @param strategies the exclusion strategies to register
+         */
+        public @NotNull Builder withExclusionStrategies(@NotNull Collection<ExclusionStrategy> strategies) {
+            this.exclusionStrategies.addAll(strategies);
+            return this;
+        }
+
+        /**
          * Sets the output {@link FormattingStyle}.
          *
          * @param style the formatting style
@@ -312,7 +345,8 @@ public class GsonSettings {
                 this.serializingNulls,
                 this.stringType,
                 this.typeAdapters,
-                this.factories
+                this.factories,
+                this.exclusionStrategies
             );
         }
 
