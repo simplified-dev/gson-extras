@@ -33,6 +33,9 @@ public final class StringTypeAdapter extends TypeAdapter<String> {
 
     @Override
     public @Nullable String read(@NotNull JsonReader in) throws IOException {
+        if (in.peek() != com.google.gson.stream.JsonToken.STRING)
+            return null;
+
         String value = in.nextString();
 
         if (StringUtil.isEmpty(value)) {
