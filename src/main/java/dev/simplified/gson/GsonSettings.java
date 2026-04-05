@@ -14,7 +14,6 @@ import dev.sbs.api.collection.concurrent.ConcurrentList;
 import dev.sbs.api.collection.concurrent.ConcurrentMap;
 import dev.sbs.api.io.gson.adapter.StringTypeAdapter;
 import dev.sbs.api.util.StringUtil;
-import dev.sbs.api.util.builder.ClassBuilder;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.intellij.lang.annotations.PrintFormat;
@@ -125,7 +124,7 @@ public class GsonSettings {
     /**
      * Fluent builder for constructing {@link GsonSettings} instances.
      */
-    public static class Builder implements ClassBuilder<GsonSettings> {
+    public static class Builder {
 
         private Optional<String> dateFormat = Optional.empty();
         private FormattingStyle style = FormattingStyle.COMPACT;
@@ -337,7 +336,6 @@ public class GsonSettings {
         }
 
         /** {@inheritDoc} */
-        @Override
         public @NotNull GsonSettings build() {
             return new GsonSettings(
                 this.dateFormat,
