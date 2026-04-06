@@ -32,7 +32,7 @@ import org.intellij.lang.annotations.PrintFormat;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.awt.Color;
+import java.awt.*;
 import java.lang.reflect.Type;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -134,6 +134,8 @@ public class GsonSettings {
      */
     public static @NotNull GsonSettings defaults() {
         return builder()
+            .withDateFormat("yyyy-MM-dd HH:mm:ss")
+            .withStringType(GsonSettings.StringType.NULL)
             .withTypeAdapter(Color.class, new ColorTypeAdapter())
             .withTypeAdapter(Instant.class, new InstantTypeAdapter())
             .withTypeAdapter(OffsetDateTime.class, new OffsetDateTimeTypeAdapter())
