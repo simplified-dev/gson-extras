@@ -20,7 +20,6 @@ import dev.simplified.reflection.accessor.FieldAccessor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.log4j.Log4j2;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -48,7 +47,6 @@ import java.util.regex.Pattern;
  *
  * @see Capture
  */
-@Log4j2
 @NoArgsConstructor
 public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
@@ -299,7 +297,6 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                     Object value = this.getGson().fromJson(entry.getValue(), info.getValueType());
                     map.put(key, value);
                 } catch (Exception ex) {
-                    log.warn("Failed to deserialize @Capture entry '{}': {}", entry.getKey(), ex.getMessage());
                 }
             }
 
@@ -339,8 +336,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                             groups.put(groupKey, new JsonObject());
 
                         groups.get(groupKey).add("", entry.getValue());
-                    } else
-                        log.warn("@Capture grouping: no suffix match for '{}'", strippedKey);
+                    }
                 }
             }
 
@@ -351,7 +347,6 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                     Object value = this.getGson().fromJson(group.getValue(), info.getValueType());
                     map.put(key, value);
                 } catch (Exception ex) {
-                    log.warn("Failed to deserialize @Capture group '{}': {}", group.getKey(), ex.getMessage());
                 }
             }
 

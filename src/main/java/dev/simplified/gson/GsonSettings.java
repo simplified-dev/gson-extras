@@ -12,7 +12,18 @@ import com.google.gson.TypeAdapterFactory;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.collection.ConcurrentList;
 import dev.simplified.collection.ConcurrentMap;
+import dev.simplified.gson.adapter.ColorTypeAdapter;
+import dev.simplified.gson.adapter.InstantTypeAdapter;
+import dev.simplified.gson.adapter.OffsetDateTimeTypeAdapter;
 import dev.simplified.gson.adapter.StringTypeAdapter;
+import dev.simplified.gson.adapter.UUIDTypeAdapter;
+import dev.simplified.gson.factory.CaptureTypeAdapterFactory;
+import dev.simplified.gson.factory.CaseInsensitiveEnumTypeAdapterFactory;
+import dev.simplified.gson.factory.LenientTypeAdapterFactory;
+import dev.simplified.gson.factory.OptionalTypeAdapterFactory;
+import dev.simplified.gson.factory.PostInitTypeAdapterFactory;
+import dev.simplified.gson.factory.SerializedPathTypeAdaptorFactory;
+import dev.simplified.gson.factory.SplitTypeAdapterFactory;
 import dev.simplified.util.StringUtil;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +31,14 @@ import org.intellij.lang.annotations.PrintFormat;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.awt.Color;
 import java.lang.reflect.Type;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Immutable configuration for building {@link Gson} instances.
@@ -63,6 +78,15 @@ public class GsonSettings {
     private final @NotNull ConcurrentList<ExclusionStrategy> exclusionStrategies;
 
     /**
+     * Creates a new empty {@link Builder}.
+     *
+     * @return a new builder
+     */
+    public static @NotNull Builder builder() {
+        return new Builder();
+    }
+
+    /**
      * Builds a new {@link Gson} instance from this configuration.
      *
      * @return a configured {@link Gson} instance
@@ -87,12 +111,42 @@ public class GsonSettings {
     }
 
     /**
-     * Creates a new empty {@link Builder}.
+     * Creates a {@link GsonSettings} pre-configured with all built-in type adapters
+     * and factories.
+     * <p>
+     * The returned settings include:
+     * <ul>
+     *   <li><b>Type adapters</b> - {@link ColorTypeAdapter}, {@link InstantTypeAdapter},
+     *       {@link OffsetDateTimeTypeAdapter}, {@link UUIDTypeAdapter}</li>
+     *   <li><b>Factories</b> (registration order - Gson checks last-registered first, so
+     *       the outermost wrapper is registered last):
+     *       {@link CaseInsensitiveEnumTypeAdapterFactory}, {@link OptionalTypeAdapterFactory},
+     *       {@link SplitTypeAdapterFactory}, {@link SerializedPathTypeAdaptorFactory},
+     *       {@link LenientTypeAdapterFactory}, {@link CaptureTypeAdapterFactory},
+     *       {@link PostInitTypeAdapterFactory}</li>
+     * </ul>
+     * <p>
+     * Use {@link #create()} on the result to obtain a {@link Gson} instance, or
+     * {@link #mutate()} to customize further before building.
      *
-     * @return a new builder
+     * @return a fully configured {@link GsonSettings} with all built-in adapters and factories
      */
-    public static @NotNull Builder builder() {
-        return new Builder();
+    public static @NotNull GsonSettings defaults() {
+        return builder()
+            .withTypeAdapter(Color.class, new ColorTypeAdapter())
+            .withTypeAdapter(Instant.class, new InstantTypeAdapter())
+            .withTypeAdapter(OffsetDateTime.class, new OffsetDateTimeTypeAdapter())
+            .withTypeAdapter(UUID.class, new UUIDTypeAdapter())
+            .withFactories(
+                new CaseInsensitiveEnumTypeAdapterFactory(),
+                new OptionalTypeAdapterFactory(),
+                new SplitTypeAdapterFactory(),
+                new SerializedPathTypeAdaptorFactory(),
+                new LenientTypeAdapterFactory(),
+                new CaptureTypeAdapterFactory(),
+                new PostInitTypeAdapterFactory()
+            )
+            .build();
     }
 
     /**
