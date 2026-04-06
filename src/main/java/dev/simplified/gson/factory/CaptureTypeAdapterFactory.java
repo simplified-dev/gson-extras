@@ -41,9 +41,23 @@ import java.util.regex.Pattern;
  * Incompatible entries are stored as overflow for round-trip fidelity.
  * <p>
  * When a map's value type is a class with fields (not a primitive, String, or enum),
- * the factory enters class-value grouping mode - entries are auto-grouped by suffix
+ * the factory enters class-value grouping mode - entries are auto-grouped by affix
  * matching against the value class's field serialized names, then each group is
  * deserialized as an instance of that class.
+ * <p>
+ * Affix direction is determined by the field's serialized name:
+ * <ul>
+ *     <li><b>Prefix</b> ({@code fieldName_baseName}) - detected by {@code ^} at the
+ *         start or {@code _} at the end of the serialized name</li>
+ *     <li><b>Suffix</b> ({@code baseName_fieldName}) - detected by {@code $} at the
+ *         end or {@code _} at the start of the serialized name</li>
+ *     <li><b>Auto suffix</b> (default) - plain names without markers are treated as
+ *         suffixes with an underscore separator prepended automatically</li>
+ *     <li><b>Bare field</b> - {@code @SerializedName("")} captures the base key
+ *         itself with no affix</li>
+ * </ul>
+ * The {@code ^} and {@code $} markers are stripped for matching and serialization;
+ * the {@code _} separator is preserved.
  *
  * @see Capture
  */
@@ -51,6 +65,18 @@ import java.util.regex.Pattern;
 public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
     private static final Map<Object, JsonObject> OVERFLOW = Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * Holds a match pattern and the corresponding {@link SerializedName @SerializedName}
+     * key used inside group {@link JsonObject JsonObjects} for Gson deserialization.
+     *
+     * @param matchPattern the clean pattern for {@link String#startsWith} or
+     *                     {@link String#endsWith} matching
+     * @param serializedKey the key stored in the group {@link JsonObject} - must match
+     *                      the field's {@link SerializedName @SerializedName} exactly
+     *                      so Gson can deserialize it
+     */
+    private record GroupAffix(@NotNull String matchPattern, @NotNull String serializedKey) {}
 
     @Override
     public <T> @Nullable TypeAdapter<T> create(@NotNull Gson gson, @NotNull TypeToken<T> typeToken) {
@@ -139,6 +165,10 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                 // Remove the capture field's own serialized key from the output
                 jsonObject.remove(captureInfo.getSerializedName());
 
+                // Target object: for descend fields, entries go into a nested object;
+                // for normal captures, entries go directly into the root object
+                JsonObject target = captureInfo.isDescend() ? new JsonObject() : jsonObject;
+
                 if (captureInfo.isGroupingMode()) {
                     // Flatten grouped entries back
                     for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -147,20 +177,33 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
                         if (groupElement.isJsonObject()) {
                             for (Map.Entry<String, JsonElement> field : groupElement.getAsJsonObject().entrySet()) {
-                                String originalKey;
+                                String fieldKey = field.getKey();
+                                String reconstructed;
 
-                                if (field.getKey().isEmpty()) {
-                                    // Bare field: no suffix
-                                    originalKey = captureInfo.hasFilter()
-                                        ? captureInfo.getLiteralPrefix() + groupKey
-                                        : groupKey;
+                                if (fieldKey.isEmpty()) {
+                                    // Bare field
+                                    reconstructed = groupKey;
+                                } else if (fieldKey.startsWith("^")) {
+                                    // Explicit prefix marker
+                                    reconstructed = fieldKey.substring(1) + groupKey;
+                                } else if (fieldKey.endsWith("$")) {
+                                    // Explicit suffix marker
+                                    reconstructed = groupKey + fieldKey.substring(0, fieldKey.length() - 1);
+                                } else if (fieldKey.endsWith("_")) {
+                                    // Prefix via trailing underscore
+                                    reconstructed = fieldKey + groupKey;
+                                } else if (fieldKey.startsWith("_")) {
+                                    // Suffix via leading underscore
+                                    reconstructed = groupKey + fieldKey;
                                 } else {
-                                    originalKey = captureInfo.hasFilter()
-                                        ? captureInfo.getLiteralPrefix() + groupKey + "_" + field.getKey()
-                                        : groupKey + "_" + field.getKey();
+                                    // Auto suffix
+                                    reconstructed = groupKey + "_" + fieldKey;
                                 }
 
-                                jsonObject.add(originalKey, field.getValue());
+                                String originalKey = captureInfo.hasFilter()
+                                    ? captureInfo.getLiteralPrefix() + reconstructed
+                                    : reconstructed;
+                                target.add(originalKey, field.getValue());
                             }
                         }
                     }
@@ -170,16 +213,25 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                         String originalKey = captureInfo.hasFilter()
                             ? captureInfo.getLiteralPrefix() + strippedKey
                             : strippedKey;
-                        jsonObject.add(originalKey, this.getGson().toJsonTree(entry.getValue()));
+                        target.add(originalKey, this.getGson().toJsonTree(entry.getValue()));
                     }
                 }
+
+                if (captureInfo.isDescend())
+                    jsonObject.add(captureInfo.getSerializedName(), target);
 
                 // Merge overflow back
                 JsonObject overflow = OVERFLOW.get(mapObj);
 
                 if (overflow != null) {
-                    for (Map.Entry<String, JsonElement> entry : overflow.entrySet())
-                        jsonObject.add(entry.getKey(), entry.getValue());
+                    JsonObject overflowTarget = captureInfo.isDescend()
+                        ? jsonObject.getAsJsonObject(captureInfo.getSerializedName())
+                        : jsonObject;
+
+                    if (overflowTarget != null) {
+                        for (Map.Entry<String, JsonElement> entry : overflow.entrySet())
+                            overflowTarget.add(entry.getKey(), entry.getValue());
+                    }
                 }
             }
 
@@ -203,6 +255,41 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             for (CaptureFieldInfo info : this.getCaptureFields()) {
                 capturedJsonMaps.put(info.getFieldName(), new JsonObject());
                 overflowMaps.put(info.getFieldName(), new JsonObject());
+            }
+
+            // Pre-process descend fields: extract nested objects and capture their entries
+            for (CaptureFieldInfo info : this.getCaptureFields()) {
+                if (!info.isDescend())
+                    continue;
+
+                JsonElement nested = rootObject.remove(info.getSerializedName());
+
+                if (nested == null || !nested.isJsonObject())
+                    continue;
+
+                for (Map.Entry<String, JsonElement> entry : nested.getAsJsonObject().entrySet()) {
+                    String key = entry.getKey();
+                    JsonElement value = entry.getValue();
+
+                    if (info.hasFilter()) {
+                        if (!info.getPattern().matcher(key).find())
+                            continue;
+
+                        String strippedKey = key.replaceFirst(info.getFilter(), "");
+
+                        if (info.isGroupingMode())
+                            capturedJsonMaps.get(info.getFieldName()).add(strippedKey, value);
+                        else if (isCompatibleCaptureEntry(strippedKey, value, info))
+                            capturedJsonMaps.get(info.getFieldName()).add(strippedKey, value);
+                        else
+                            overflowMaps.get(info.getFieldName()).add(key, value);
+                    } else {
+                        if (info.isGroupingMode() || isCompatibleCaptureEntry(key, value, info))
+                            capturedJsonMaps.get(info.getFieldName()).add(key, value);
+                        else
+                            overflowMaps.get(info.getFieldName()).add(key, value);
+                    }
+                }
             }
 
             // Classify each JSON entry
@@ -314,17 +401,32 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                 boolean matched = false;
 
                 // Try longest suffix first
-                for (String suffix : info.getGroupSuffixes()) {
-                    if (strippedKey.endsWith(suffix)) {
-                        String groupKey = strippedKey.substring(0, strippedKey.length() - suffix.length());
-                        String fieldName = suffix.substring(1); // Remove leading underscore
+                for (GroupAffix suffix : info.getGroupSuffixes()) {
+                    if (strippedKey.endsWith(suffix.matchPattern())) {
+                        String groupKey = strippedKey.substring(0, strippedKey.length() - suffix.matchPattern().length());
 
                         if (!groups.containsKey(groupKey))
                             groups.put(groupKey, new JsonObject());
 
-                        groups.get(groupKey).add(fieldName, entry.getValue());
+                        groups.get(groupKey).add(suffix.serializedKey(), entry.getValue());
                         matched = true;
                         break;
+                    }
+                }
+
+                // Try longest prefix next
+                if (!matched) {
+                    for (GroupAffix prefix : info.getGroupPrefixes()) {
+                        if (strippedKey.startsWith(prefix.matchPattern())) {
+                            String groupKey = strippedKey.substring(prefix.matchPattern().length());
+
+                            if (!groups.containsKey(groupKey))
+                                groups.put(groupKey, new JsonObject());
+
+                            groups.get(groupKey).add(prefix.serializedKey(), entry.getValue());
+                            matched = true;
+                            break;
+                        }
                     }
                 }
 
@@ -469,8 +571,10 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
         private final @NotNull Type keyType;
         private final @NotNull Type valueType;
         private final boolean groupingMode;
-        private final @NotNull ConcurrentList<String> groupSuffixes;
+        private final @NotNull ConcurrentList<GroupAffix> groupSuffixes;
+        private final @NotNull ConcurrentList<GroupAffix> groupPrefixes;
         private final boolean bareField;
+        private final boolean descend;
 
         private CaptureFieldInfo(@NotNull FieldAccessor<?> accessor) {
             this.accessor = accessor;
@@ -481,6 +585,9 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             this.filter = accessor.getAnnotation(Capture.class)
                 .map(Capture::filter)
                 .orElse("");
+            this.descend = accessor.getAnnotation(Capture.class)
+                .map(Capture::descend)
+                .orElse(false);
             this.pattern = hasFilter() ? Pattern.compile(this.filter) : null;
             this.literalPrefix = hasFilter() ? this.filter.replaceAll("^\\^", "").replaceAll("\\$$", "") : "";
 
@@ -495,20 +602,24 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                 this.valueType = Object.class;
             }
 
-            // Determine if grouping mode (value is a class with fields, not primitive/String/enum)
+            // Determine if grouping mode (value is a class with fields, not primitive/String/enum/Map/Collection)
             Class<?> rawValueType = getRawType(this.valueType);
             this.groupingMode = !rawValueType.isPrimitive()
                 && !Number.class.isAssignableFrom(rawValueType)
                 && rawValueType != String.class
                 && rawValueType != Boolean.class
                 && !rawValueType.isEnum()
-                && rawValueType != Object.class;
+                && rawValueType != Object.class
+                && !Map.class.isAssignableFrom(rawValueType)
+                && !java.util.Collection.class.isAssignableFrom(rawValueType);
 
             if (this.groupingMode) {
                 this.groupSuffixes = Concurrent.newList();
-                this.bareField = discoverGroupSuffixes(rawValueType, this.groupSuffixes);
+                this.groupPrefixes = Concurrent.newList();
+                this.bareField = discoverGroupAffixes(rawValueType, this.groupSuffixes, this.groupPrefixes);
             } else {
                 this.groupSuffixes = Concurrent.newList();
+                this.groupPrefixes = Concurrent.newList();
                 this.bareField = false;
             }
         }
@@ -521,7 +632,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             return this.bareField;
         }
 
-        private static boolean discoverGroupSuffixes(@NotNull Class<?> clazz, @NotNull ConcurrentList<String> suffixes) {
+        private static boolean discoverGroupAffixes(@NotNull Class<?> clazz, @NotNull ConcurrentList<GroupAffix> suffixes, @NotNull ConcurrentList<GroupAffix> prefixes) {
             boolean hasBare = false;
             Reflection<?> reflection = new Reflection<>(clazz);
             reflection.setProcessingSuperclass(false);
@@ -536,14 +647,22 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
                 if (name.isEmpty()) {
                     hasBare = true;
-                    continue;
+                } else if (name.startsWith("^")) {
+                    prefixes.add(new GroupAffix(name.substring(1), name));
+                } else if (name.endsWith("$")) {
+                    suffixes.add(new GroupAffix(name.substring(0, name.length() - 1), name));
+                } else if (name.endsWith("_")) {
+                    prefixes.add(new GroupAffix(name, name));
+                } else if (name.startsWith("_")) {
+                    suffixes.add(new GroupAffix(name, name));
+                } else {
+                    suffixes.add(new GroupAffix("_" + name, name));
                 }
-
-                suffixes.add("_" + name);
             }
 
-            // Sort longest first for greedy matching
-            suffixes.sort((a, b) -> Integer.compare(b.length(), a.length()));
+            // Sort longest match pattern first for greedy matching
+            suffixes.sort((a, b) -> Integer.compare(b.matchPattern().length(), a.matchPattern().length()));
+            prefixes.sort((a, b) -> Integer.compare(b.matchPattern().length(), a.matchPattern().length()));
             return hasBare;
         }
 

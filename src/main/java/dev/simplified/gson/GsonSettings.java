@@ -19,6 +19,7 @@ import dev.simplified.gson.adapter.StringTypeAdapter;
 import dev.simplified.gson.adapter.UUIDTypeAdapter;
 import dev.simplified.gson.factory.CaptureTypeAdapterFactory;
 import dev.simplified.gson.factory.CaseInsensitiveEnumTypeAdapterFactory;
+import dev.simplified.gson.factory.CollapseTypeAdapterFactory;
 import dev.simplified.gson.factory.LenientTypeAdapterFactory;
 import dev.simplified.gson.factory.OptionalTypeAdapterFactory;
 import dev.simplified.gson.factory.PostInitTypeAdapterFactory;
@@ -123,7 +124,7 @@ public class GsonSettings {
      *       {@link CaseInsensitiveEnumTypeAdapterFactory}, {@link OptionalTypeAdapterFactory},
      *       {@link SplitTypeAdapterFactory}, {@link SerializedPathTypeAdaptorFactory},
      *       {@link LenientTypeAdapterFactory}, {@link CaptureTypeAdapterFactory},
-     *       {@link PostInitTypeAdapterFactory}</li>
+     *       {@link CollapseTypeAdapterFactory}, {@link PostInitTypeAdapterFactory}</li>
      * </ul>
      * <p>
      * Use {@link #create()} on the result to obtain a {@link Gson} instance, or
@@ -144,6 +145,7 @@ public class GsonSettings {
                 new SerializedPathTypeAdaptorFactory(),
                 new LenientTypeAdapterFactory(),
                 new CaptureTypeAdapterFactory(),
+                new CollapseTypeAdapterFactory(),
                 new PostInitTypeAdapterFactory()
             )
             .build();
