@@ -356,7 +356,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             // Post-assign captured maps
             for (CaptureFieldInfo info : this.getCaptureFields()) {
                 JsonObject capturedJson = capturedJsonMaps.get(info.getFieldName());
-                ConcurrentMap<Object, Object> capturedMap;
+                Map<Object, Object> capturedMap;
 
                 if (info.isGroupingMode())
                     capturedMap = buildGroupedMap(capturedJson, info);
@@ -375,8 +375,8 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             return result;
         }
 
-        private @NotNull ConcurrentMap<Object, Object> buildSimpleMap(@NotNull JsonObject json, @NotNull CaptureFieldInfo info) {
-            ConcurrentMap<Object, Object> map = Concurrent.newMap();
+        private @NotNull Map<Object, Object> buildSimpleMap(@NotNull JsonObject json, @NotNull CaptureFieldInfo info) {
+            Map<Object, Object> map = info.newMapInstance();
 
             for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
                 try {
@@ -390,8 +390,8 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             return map;
         }
 
-        private @NotNull ConcurrentMap<Object, Object> buildGroupedMap(@NotNull JsonObject json, @NotNull CaptureFieldInfo info) {
-            ConcurrentMap<Object, Object> map = Concurrent.newMap();
+        private @NotNull Map<Object, Object> buildGroupedMap(@NotNull JsonObject json, @NotNull CaptureFieldInfo info) {
+            Map<Object, Object> map = info.newMapInstance();
 
             // Group entries by matching suffixes against value class field names
             ConcurrentMap<String, JsonObject> groups = Concurrent.newMap();
@@ -570,6 +570,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
         private final @NotNull String literalPrefix;
         private final @NotNull Type keyType;
         private final @NotNull Type valueType;
+        private final @NotNull Class<? extends Map> mapImplClass;
         private final boolean groupingMode;
         private final @NotNull ConcurrentList<GroupAffix> groupSuffixes;
         private final @NotNull ConcurrentList<GroupAffix> groupPrefixes;
@@ -602,6 +603,18 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                 this.valueType = Object.class;
             }
 
+            // Resolve the concrete Map implementation for reflective no-arg construction.
+            // Bare interfaces or abstract classes fall back to ConcurrentMap for thread-safety.
+            Class<?> rawFieldType = accessor.getFieldType();
+
+            if (rawFieldType.isInterface() || Modifier.isAbstract(rawFieldType.getModifiers()))
+                this.mapImplClass = ConcurrentMap.class;
+            else {
+                @SuppressWarnings("unchecked")
+                Class<? extends Map> concrete = (Class<? extends Map>) rawFieldType;
+                this.mapImplClass = concrete;
+            }
+
             // Determine if grouping mode (value is a class with fields, not primitive/String/enum/Map/Collection)
             Class<?> rawValueType = getRawType(this.valueType);
             this.groupingMode = !rawValueType.isPrimitive()
@@ -630,6 +643,17 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
         boolean hasBareField() {
             return this.bareField;
+        }
+
+        @NotNull Map<Object, Object> newMapInstance() {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<Object, Object> instance = (Map<Object, Object>) this.mapImplClass.getDeclaredConstructor().newInstance();
+                return instance;
+            } catch (ReflectiveOperationException ex) {
+                // Concrete type lacks an accessible no-arg constructor - degrade to ConcurrentMap
+                return new ConcurrentMap<>();
+            }
         }
 
         private static boolean discoverGroupAffixes(@NotNull Class<?> clazz, @NotNull ConcurrentList<GroupAffix> suffixes, @NotNull ConcurrentList<GroupAffix> prefixes) {
