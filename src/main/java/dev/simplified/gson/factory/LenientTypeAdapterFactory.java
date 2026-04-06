@@ -22,7 +22,6 @@ import dev.simplified.util.StringUtil;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.log4j.Log4j2;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -49,7 +48,6 @@ import java.util.WeakHashMap;
  * @see Lenient
  * @see Extract
  */
-@Log4j2
 @NoArgsConstructor
 public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
 
@@ -202,11 +200,8 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
                     .findFirst()
                     .orElse(null);
 
-                if (sourceOverflow == null) {
-                    log.warn("@Extract('{}') on field '{}' references unknown @Lenient source '{}'",
-                        extractInfo.getPath(), extractInfo.getAccessor().getName(), extractInfo.getSourceFieldName());
+                if (sourceOverflow == null)
                     continue;
-                }
 
                 if (sourceOverflow.overflow().isJsonObject()) {
                     JsonObject overflowObj = sourceOverflow.overflow().getAsJsonObject();
@@ -241,8 +236,6 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
                     Object extractValue = this.getGson().fromJson(claim.element(), claim.info().getAccessor().getGenericType());
                     claim.info().getAccessor().set(value, extractValue);
                 } catch (Exception ex) {
-                    log.warn("Failed to deserialize @Extract('{}') field '{}': {}",
-                        claim.info().getPath(), claim.info().getAccessor().getName(), ex.getMessage());
                 }
             }
 

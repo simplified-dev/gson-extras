@@ -1,9 +1,6 @@
 # Gson Extras
 
-Custom Gson `TypeAdapter` implementations and a `GsonFactory` for common Java
-types that Gson doesn't handle well out of the box. Provides adapters for
-`Color`, `Instant`, `OffsetDateTime`, `String` (with null-safety), and `UUID`,
-plus a factory that registers them all with sensible defaults.
+Custom Gson `TypeAdapter` implementations, annotation-driven `TypeAdapterFactory` extensions, and a centralized `GsonSettings` builder for configuring `Gson` instances. Provides adapters for `Color`, `Instant`, `OffsetDateTime`, `String` (with null-safety), and `UUID`, plus factories for `Optional` unwrapping, case-insensitive enums, nested JSON path mapping, dynamic key capture, lenient type filtering, string-delimited pair splitting, and post-deserialization callbacks.
 
 > [!IMPORTANT]
 > This library is under active development. APIs may change between releases
@@ -12,26 +9,58 @@ plus a factory that registers them all with sensible defaults.
 ## Table of Contents
 
 - [Features](#features)
+  - [Adapters](#adapters)
+  - [Factories](#factories)
+  - [Annotations](#annotations)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
-  - [Using GsonFactory](#using-gsonfactory)
+  - [Quick Start](#quick-start)
+  - [Custom Configuration](#custom-configuration)
   - [Individual Adapters](#individual-adapters)
-- [Adapters](#adapters)
-- [Project Structure](#project-structure)
+- [Architecture](#architecture)
+  - [Package Overview](#package-overview)
+  - [Project Structure](#project-structure)
+- [Dependencies](#dependencies)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## Features
 
-- **GsonFactory** - One-call factory method that returns a fully configured `Gson` instance with all adapters registered
-- **Color adapter** - Serializes and deserializes `java.awt.Color` values
-- **Instant adapter** - Handles `java.time.Instant` with ISO-8601 formatting
-- **OffsetDateTime adapter** - Handles `java.time.OffsetDateTime` with timezone-aware formatting
-- **String adapter** - Null-safe `String` handling that avoids `"null"` literal strings
-- **UUID adapter** - Compact `java.util.UUID` serialization
-- **JitPack distribution** - Add as a Gradle dependency with no manual installation
+`GsonSettings` provides immutable, builder-based configuration for `Gson` instances. Call `GsonSettings.defaults()` to get a pre-configured instance with all adapters and factories registered, or use `GsonSettings.builder()` to assemble a custom configuration.
+
+### Adapters
+
+| Adapter | Java Type | Description |
+|---------|-----------|-------------|
+| `ColorTypeAdapter` | `java.awt.Color` | Serializes as a single RGBA-packed integer; deserializes from integer or comma-separated `r,g,b,a` string |
+| `InstantTypeAdapter` | `java.time.Instant` | Serializes as epoch milliseconds; deserializes from epoch millisecond values |
+| `OffsetDateTimeTypeAdapter` | `java.time.OffsetDateTime` | Serializes and deserializes using ISO-8601 format with timezone offset via `DateTimeFormatter.ISO_OFFSET_DATE_TIME` |
+| `StringTypeAdapter` | `java.lang.String` | Configurable null/empty handling via `StringType` - `DEFAULT` passes through, `EMPTY` converts null to empty, `NULL` converts empty to null |
+| `UUIDTypeAdapter` | `java.util.UUID` | Serializes via `toString()`; deserializes from standard UUID string representation |
+
+### Factories
+
+| Factory | Trigger | Description |
+|---------|---------|-------------|
+| `PostInitTypeAdapterFactory` | `PostInit` interface | Wraps deserialization to call `postInit()` after all field population is complete, allowing computed or transient fields to be initialized from deserialized state |
+| `CaptureTypeAdapterFactory` | `@Capture` | Collects unmatched JSON keys into typed `Map` fields; supports regex filtering to route keys by prefix, enum keys via `@SerializedName`, and class-value grouping where flat keys like `song_hymn_joy_best_completion` are auto-grouped into nested objects |
+| `LenientTypeAdapterFactory` | `@Lenient`, `@Extract` | Silently filters type-incompatible entries from `Map` and `Collection` fields during deserialization, storing filtered entries as overflow for round-trip fidelity; `@Extract` pulls specific overflow entries into typed companion fields via dot-path syntax |
+| `SerializedPathTypeAdaptorFactory` | `@SerializedPath` | Maps flat Java fields to nested JSON paths using dot-separated expressions (e.g. `stats.combat.strength`), restructuring the JSON tree on both read and write to maintain nested structure |
+| `SplitTypeAdapterFactory` | `@Split` | Splits a single JSON string value by a literal delimiter into the two generic type components of a `Pair` or `PairOptional` field, rejoining on serialization |
+| `OptionalTypeAdapterFactory` | `Optional<T>` | Unwraps present values to their inner type during serialization; deserializes null or missing values as `Optional.empty()` |
+| `CaseInsensitiveEnumTypeAdapterFactory` | Any enum | Matches enum constants by name and `@SerializedName` values (including alternates) without regard to case during deserialization; serializes using `@SerializedName` value when present |
+
+### Annotations
+
+| Annotation | Target | Description |
+|------------|--------|-------------|
+| `@Capture` | `Map` field | Marks a field to receive unmatched JSON entries; optional `filter` regex selects keys by pattern and strips the matched prefix from captured key names |
+| `@Extract` | Field | Pulls a specific entry from a `@Lenient` field's overflow into a typed companion field using `"sourceField.jsonKey"` path syntax |
+| `@Lenient` | `Map`/`Collection` field | Enables lenient deserialization that silently discards type-incompatible entries rather than failing, preserving them as overflow for serialization round-trips |
+| `@SerializedPath` | Field | Specifies a dot-separated path (e.g. `"stats.combat.strength"`) mapping a flat Java field to a nested JSON location |
+| `@Split` | `Pair`/`PairOptional` field | Specifies a literal delimiter string used to split a single JSON string into left and right components for `Pair`/`PairOptional` deserialization |
 
 ## Getting Started
 
@@ -99,16 +128,16 @@ dependencies {
 
 ## Usage
 
-### Using GsonFactory
+### Quick Start
 
-The simplest way to get started is through `GsonFactory`, which registers all
-adapters with sensible defaults:
+`GsonSettings.defaults()` returns a fully configured settings instance with all
+built-in adapters and factories registered:
 
 ```java
 import com.google.gson.Gson;
-import dev.simplified.gson.factory.GsonFactory;
+import dev.simplified.gson.GsonSettings;
 
-Gson gson = GsonFactory.create();
+Gson gson = GsonSettings.defaults().create();
 
 // Serialize
 String json = gson.toJson(myObject);
@@ -117,9 +146,34 @@ String json = gson.toJson(myObject);
 MyObject obj = gson.fromJson(json, MyObject.class);
 ```
 
+### Custom Configuration
+
+Use `defaults()` as a starting point and `mutate()` to customize:
+
+```java
+Gson gson = GsonSettings.defaults()
+    .mutate()
+    .isPrettyPrint()
+    .isSerializingNulls()
+    .withStringType(GsonSettings.StringType.NULL)
+    .build()
+    .create();
+```
+
+Or build from scratch with `GsonSettings.builder()` for full control:
+
+```java
+Gson gson = GsonSettings.builder()
+    .withTypeAdapter(UUID.class, new UUIDTypeAdapter())
+    .withFactories(new OptionalTypeAdapterFactory())
+    .isPrettyPrint()
+    .build()
+    .create();
+```
+
 ### Individual Adapters
 
-You can also register adapters individually on a `GsonBuilder`:
+You can also register adapters directly on a `GsonBuilder`:
 
 ```java
 import com.google.gson.GsonBuilder;
@@ -132,20 +186,27 @@ Gson gson = new GsonBuilder()
     .create();
 ```
 
-## Adapters
+## Architecture
 
-| Adapter | Java Type | Description |
-|---------|-----------|-------------|
-| `ColorTypeAdapter` | `java.awt.Color` | Serializes Color as an integer RGBA value |
-| `InstantTypeAdapter` | `java.time.Instant` | ISO-8601 instant formatting |
-| `OffsetDateTimeTypeAdapter` | `java.time.OffsetDateTime` | ISO-8601 with timezone offset |
-| `StringTypeAdapter` | `java.lang.String` | Null-safe serialization, avoids `"null"` literals |
-| `UUIDTypeAdapter` | `java.util.UUID` | Standard UUID string representation |
+### Package Overview
 
-## Project Structure
+| Package | Description |
+|---------|-------------|
+| `dev.simplified.gson` | `GsonSettings` builder, `StringType` enum, annotations, and `PostInit` interface |
+| `dev.simplified.gson.adapter` | `TypeAdapter` implementations for individual Java types |
+| `dev.simplified.gson.factory` | `TypeAdapterFactory` implementations for annotation-driven behaviors |
+
+### Project Structure
 
 ```
 src/main/java/dev/simplified/gson/
+├── GsonSettings.java
+├── Capture.java
+├── Extract.java
+├── Lenient.java
+├── PostInit.java
+├── SerializedPath.java
+├── Split.java
 ├── adapter/
 │   ├── ColorTypeAdapter.java
 │   ├── InstantTypeAdapter.java
@@ -153,17 +214,25 @@ src/main/java/dev/simplified/gson/
 │   ├── StringTypeAdapter.java
 │   └── UUIDTypeAdapter.java
 └── factory/
-    └── GsonFactory.java
+    ├── CaptureTypeAdapterFactory.java
+    ├── CaseInsensitiveEnumTypeAdapterFactory.java
+    ├── LenientTypeAdapterFactory.java
+    ├── OptionalTypeAdapterFactory.java
+    ├── PostInitTypeAdapterFactory.java
+    ├── SerializedPathTypeAdaptorFactory.java
+    └── SplitTypeAdapterFactory.java
 ```
 
-| Package | Description |
-|---------|-------------|
-| `dev.simplified.gson.adapter` | Individual TypeAdapter implementations for specific Java types |
-| `dev.simplified.gson.factory` | Factory class that assembles a fully configured Gson instance |
+## Dependencies
 
-> [!TIP]
-> Use `GsonFactory.create()` for the common case. Only register individual
-> adapters if you need to customize the `GsonBuilder` with additional settings.
+| Dependency | Version | Scope |
+|------------|---------|-------|
+| [Gson](https://github.com/google/gson) | 2.11.0 | API |
+| [JetBrains Annotations](https://github.com/JetBrains/java-annotations) | 26.0.2 | API |
+| [Lombok](https://projectlombok.org/) | 1.18.36 | Compile-only |
+| [collections](https://github.com/Simplified-Dev/collections) | master-SNAPSHOT | API (Simplified-Dev) |
+| [utils](https://github.com/Simplified-Dev/utils) | master-SNAPSHOT | API (Simplified-Dev) |
+| [reflection](https://github.com/Simplified-Dev/reflection) | master-SNAPSHOT | API (Simplified-Dev) |
 
 ## Contributing
 

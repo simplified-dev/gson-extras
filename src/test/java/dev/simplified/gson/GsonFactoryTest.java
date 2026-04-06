@@ -3,7 +3,6 @@ package dev.simplified.gson;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
-import dev.simplified.SimplifiedApi;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.collection.ConcurrentMap;
 import dev.simplified.collection.tuple.pair.Pair;
@@ -19,6 +18,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 public class GsonFactoryTest {
+
+    private static final Gson GSON = GsonSettings.defaults().create();
 
     // ──── SerializedPathTypeAdaptorFactory ────
 
@@ -70,7 +71,7 @@ public class GsonFactoryTest {
 
         @Test
         public void readNestedPaths_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -101,7 +102,7 @@ public class GsonFactoryTest {
 
         @Test
         public void writeNestedPaths_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -152,7 +153,7 @@ public class GsonFactoryTest {
 
         @Test
         public void roundTrip_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -185,7 +186,7 @@ public class GsonFactoryTest {
 
         @Test
         public void writeWithSerializedName_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -220,7 +221,7 @@ public class GsonFactoryTest {
 
         @Test
         public void writeWithOptional_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -250,7 +251,7 @@ public class GsonFactoryTest {
 
         @Test
         public void writeWithEmptyOptional_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -296,7 +297,7 @@ public class GsonFactoryTest {
 
         @Test
         public void serializePresentOptionals_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -322,7 +323,7 @@ public class GsonFactoryTest {
 
         @Test
         public void serializeEmptyOptionals_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -342,7 +343,7 @@ public class GsonFactoryTest {
 
         @Test
         public void deserializeNullToEmpty_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -361,7 +362,7 @@ public class GsonFactoryTest {
 
         @Test
         public void deserializeMissingToEmpty_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -380,7 +381,7 @@ public class GsonFactoryTest {
 
         @Test
         public void roundTrip_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -405,7 +406,7 @@ public class GsonFactoryTest {
 
         @Test
         public void roundTripWithEmptyOptionals_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -544,7 +545,7 @@ public class GsonFactoryTest {
 
         @Test
         public void readCapture_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -566,7 +567,7 @@ public class GsonFactoryTest {
 
         @Test
         public void writeCapture_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -589,7 +590,7 @@ public class GsonFactoryTest {
 
         @Test
         public void roundTrip_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -611,7 +612,7 @@ public class GsonFactoryTest {
 
         @Test
         public void emptyCapture_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -629,7 +630,7 @@ public class GsonFactoryTest {
 
         @Test
         public void typeFilteredCapture_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -648,7 +649,7 @@ public class GsonFactoryTest {
 
         @Test
         public void captureWithSerializedName_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -668,7 +669,7 @@ public class GsonFactoryTest {
 
         @Test
         public void captureWithPostInit_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -687,7 +688,7 @@ public class GsonFactoryTest {
 
         @Test
         public void noCaptureField_passthrough_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -704,7 +705,7 @@ public class GsonFactoryTest {
 
         @Test
         public void filteredCapture_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -725,7 +726,7 @@ public class GsonFactoryTest {
 
         @Test
         public void filterWithEnumKey_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -745,7 +746,7 @@ public class GsonFactoryTest {
 
         @Test
         public void multipleFilteredFields_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -771,7 +772,7 @@ public class GsonFactoryTest {
 
         @Test
         public void filteredRoundTrip_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -791,7 +792,7 @@ public class GsonFactoryTest {
 
         @Test
         public void classValueGrouping_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -818,7 +819,7 @@ public class GsonFactoryTest {
 
         @Test
         public void classValueGroupingWithFilter_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -840,7 +841,7 @@ public class GsonFactoryTest {
 
         @Test
         public void classValueGroupingRoundTrip_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -902,7 +903,7 @@ public class GsonFactoryTest {
 
         @Test
         public void bareEntryGrouping_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -929,7 +930,7 @@ public class GsonFactoryTest {
 
         @Test
         public void bareEntryGroupingRoundTrip_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -953,7 +954,7 @@ public class GsonFactoryTest {
 
         @Test
         public void bareEntryGroupingWithEnumKey_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -976,7 +977,7 @@ public class GsonFactoryTest {
 
         @Test
         public void bareEntryGroupingMixed_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1029,7 +1030,7 @@ public class GsonFactoryTest {
 
         @Test
         public void readSplit_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1048,7 +1049,7 @@ public class GsonFactoryTest {
 
         @Test
         public void readSplitMissing_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1064,7 +1065,7 @@ public class GsonFactoryTest {
 
         @Test
         public void readSplitNull_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1081,7 +1082,7 @@ public class GsonFactoryTest {
 
         @Test
         public void writeSplit_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1100,7 +1101,7 @@ public class GsonFactoryTest {
 
         @Test
         public void splitRoundTrip_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1121,7 +1122,7 @@ public class GsonFactoryTest {
 
         @Test
         public void splitPair_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1186,7 +1187,7 @@ public class GsonFactoryTest {
 
         @Test
         public void postInitCalledOnDeserialize_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1204,7 +1205,7 @@ public class GsonFactoryTest {
 
         @Test
         public void postInitNotCalledOnSerialize_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1227,7 +1228,7 @@ public class GsonFactoryTest {
 
         @Test
         public void nonPostInitTypeUnaffected_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1244,7 +1245,7 @@ public class GsonFactoryTest {
 
         @Test
         public void postInitExceptionSwallowed_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {
@@ -1261,7 +1262,7 @@ public class GsonFactoryTest {
 
         @Test
         public void roundTrip_ok() {
-            Gson gson = SimplifiedApi.getGson();
+            Gson gson = GSON;
 
             String json = """
                 {

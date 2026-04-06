@@ -20,7 +20,6 @@ import dev.simplified.collection.tuple.pair.PairOptional;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.log4j.Log4j2;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -37,7 +36,6 @@ import java.util.regex.Pattern;
  *
  * @see Split
  */
-@Log4j2
 @NoArgsConstructor
 public final class SplitTypeAdapterFactory implements TypeAdapterFactory {
 
@@ -149,11 +147,8 @@ public final class SplitTypeAdapterFactory implements TypeAdapterFactory {
                 try {
                     String[] parts = claim.value().split(Pattern.quote(claim.info().getDelimiter()), 2);
 
-                    if (parts.length != 2) {
-                        log.warn("@Split('{}') on field '{}': expected 2 parts but got {}",
-                            claim.info().getDelimiter(), claim.info().getAccessor().getName(), parts.length);
+                    if (parts.length != 2)
                         continue;
-                    }
 
                     Object left = this.getGson().fromJson(new JsonPrimitive(parts[0]), claim.info().getLeftType());
                     Object right = this.getGson().fromJson(new JsonPrimitive(parts[1]), claim.info().getRightType());
@@ -163,7 +158,6 @@ public final class SplitTypeAdapterFactory implements TypeAdapterFactory {
                     else
                         claim.info().getAccessor().set(result, Pair.of(left, right));
                 } catch (Exception ex) {
-                    log.warn("Failed to deserialize @Split field '{}': {}", claim.info().getAccessor().getName(), ex.getMessage());
                 }
             }
 

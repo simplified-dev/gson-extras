@@ -7,13 +7,11 @@ import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import dev.simplified.gson.PostInit;
-import lombok.extern.log4j.Log4j2;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 
-@Log4j2
 public final class PostInitTypeAdapterFactory implements TypeAdapterFactory {
 
     @Override
@@ -37,7 +35,6 @@ public final class PostInitTypeAdapterFactory implements TypeAdapterFactory {
                 try {
                     ((PostInit) obj).postInit();
                 } catch (Exception ex) {
-                    log.error("Exception during postInit of {}: {}", obj.getClass().getName(), ex.getMessage(), ex);
                 }
 
                 return obj;
