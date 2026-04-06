@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import dev.simplified.collection.Concurrent;
+import dev.simplified.collection.ConcurrentList;
 import dev.simplified.collection.ConcurrentMap;
 import dev.simplified.collection.tuple.pair.Pair;
 import dev.simplified.collection.tuple.pair.PairOptional;
@@ -997,6 +998,504 @@ public class GsonFactoryTest {
             assertThat(model.getEntries().get("gusher").getSilver(), is(20));
         }
 
+        @Getter
+        @NoArgsConstructor
+        static class MapOfMapsCaptureModel {
+
+            private String name;
+            @Capture
+            private ConcurrentMap<String, ConcurrentMap<String, Object>> data = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void mapOfMapsCapture_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Raw",
+                    "mining": {
+                        "core_of_the_mountain": 10,
+                        "toggle_core_of_the_mountain": true
+                    },
+                    "foraging": {
+                        "center_of_the_forest": 5
+                    }
+                }
+                """;
+
+            MapOfMapsCaptureModel model = gson.fromJson(json, MapOfMapsCaptureModel.class);
+
+            assertThat(model.getName(), is("Raw"));
+            assertThat(model.getData(), aMapWithSize(2));
+            assertThat(model.getData(), hasKey("mining"));
+            assertThat(model.getData().get("mining"), hasKey("core_of_the_mountain"));
+            assertThat(model.getData().get("mining"), hasKey("toggle_core_of_the_mountain"));
+            assertThat(model.getData().get("foraging"), hasKey("center_of_the_forest"));
+        }
+
+        @Test
+        public void mapOfMapsCaptureRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "RT",
+                    "mining": {
+                        "core_of_the_mountain": 10
+                    }
+                }
+                """;
+
+            MapOfMapsCaptureModel first = gson.fromJson(json, MapOfMapsCaptureModel.class);
+            String serialized = gson.toJson(first);
+            MapOfMapsCaptureModel second = gson.fromJson(serialized, MapOfMapsCaptureModel.class);
+
+            assertThat(second.getName(), is("RT"));
+            assertThat(second.getData(), aMapWithSize(1));
+            assertThat(second.getData(), hasKey("mining"));
+            assertThat(second.getData().get("mining"), hasKey("core_of_the_mountain"));
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class PrefixNode {
+
+            @SerializedName("")
+            private int level;
+            @SerializedName("toggle_")
+            private boolean enabled = true;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class PrefixGroupingModel {
+
+            @Capture
+            private ConcurrentMap<String, PrefixNode> nodes = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class CaretPrefixNode {
+
+            @SerializedName("")
+            private int level;
+            @SerializedName("^toggle_")
+            private boolean enabled = true;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class CaretPrefixGroupingModel {
+
+            @Capture
+            private ConcurrentMap<String, CaretPrefixNode> nodes = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void prefixGrouping_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "mining_speed": 50,
+                    "toggle_mining_speed": true,
+                    "fortune": 10,
+                    "toggle_fortune": false
+                }
+                """;
+
+            PrefixGroupingModel model = gson.fromJson(json, PrefixGroupingModel.class);
+
+            assertThat(model.getNodes(), aMapWithSize(2));
+            assertThat(model.getNodes(), hasKey("mining_speed"));
+            assertThat(model.getNodes().get("mining_speed").getLevel(), is(50));
+            assertThat(model.getNodes().get("mining_speed").isEnabled(), is(true));
+            assertThat(model.getNodes().get("fortune").getLevel(), is(10));
+            assertThat(model.getNodes().get("fortune").isEnabled(), is(false));
+        }
+
+        @Test
+        public void prefixGroupingMissingToggle_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "mining_speed": 50
+                }
+                """;
+
+            PrefixGroupingModel model = gson.fromJson(json, PrefixGroupingModel.class);
+
+            assertThat(model.getNodes(), aMapWithSize(1));
+            assertThat(model.getNodes().get("mining_speed").getLevel(), is(50));
+            assertThat(model.getNodes().get("mining_speed").isEnabled(), is(true));
+        }
+
+        @Test
+        public void prefixGroupingRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "mining_speed": 50,
+                    "toggle_mining_speed": true,
+                    "fortune": 10,
+                    "toggle_fortune": false
+                }
+                """;
+
+            PrefixGroupingModel first = gson.fromJson(json, PrefixGroupingModel.class);
+            String serialized = gson.toJson(first);
+            PrefixGroupingModel second = gson.fromJson(serialized, PrefixGroupingModel.class);
+
+            assertThat(second.getNodes(), aMapWithSize(2));
+            assertThat(second.getNodes().get("mining_speed").getLevel(), is(50));
+            assertThat(second.getNodes().get("mining_speed").isEnabled(), is(true));
+            assertThat(second.getNodes().get("fortune").getLevel(), is(10));
+            assertThat(second.getNodes().get("fortune").isEnabled(), is(false));
+        }
+
+        @Test
+        public void caretPrefixGrouping_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "core": 10,
+                    "toggle_core": true
+                }
+                """;
+
+            CaretPrefixGroupingModel model = gson.fromJson(json, CaretPrefixGroupingModel.class);
+
+            assertThat(model.getNodes(), aMapWithSize(1));
+            assertThat(model.getNodes().get("core").getLevel(), is(10));
+            assertThat(model.getNodes().get("core").isEnabled(), is(true));
+        }
+
+        @Test
+        public void caretPrefixGroupingRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "core": 10,
+                    "toggle_core": true
+                }
+                """;
+
+            CaretPrefixGroupingModel first = gson.fromJson(json, CaretPrefixGroupingModel.class);
+            String serialized = gson.toJson(first);
+            CaretPrefixGroupingModel second = gson.fromJson(serialized, CaretPrefixGroupingModel.class);
+
+            assertThat(second.getNodes(), aMapWithSize(1));
+            assertThat(second.getNodes().get("core").getLevel(), is(10));
+            assertThat(second.getNodes().get("core").isEnabled(), is(true));
+        }
+
+    }
+
+    // ──── CollapseTypeAdapterFactory ────
+
+    @Nested
+    class CollapseTests {
+
+        @Getter
+        @NoArgsConstructor
+        static class Boss {
+
+            @Key
+            private transient String id;
+            private double xp;
+            private int level;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class MapCollapseModel {
+
+            private String name;
+            @Collapse
+            @SerializedName("bosses")
+            private ConcurrentMap<String, Boss> bosses = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class ListCollapseModel {
+
+            private String name;
+            @Collapse
+            @SerializedName("bosses")
+            private ConcurrentList<Boss> bosses = Concurrent.newList();
+
+        }
+
+        @Test
+        public void mapCollapse_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Test",
+                    "bosses": {
+                        "zombie": {"xp": 100.0, "level": 5},
+                        "spider": {"xp": 50.0, "level": 3}
+                    }
+                }
+                """;
+
+            MapCollapseModel model = gson.fromJson(json, MapCollapseModel.class);
+
+            assertThat(model.getName(), is("Test"));
+            assertThat(model.getBosses(), aMapWithSize(2));
+            assertThat(model.getBosses().get("zombie").getId(), is("zombie"));
+            assertThat(model.getBosses().get("zombie").getXp(), is(100.0));
+            assertThat(model.getBosses().get("zombie").getLevel(), is(5));
+            assertThat(model.getBosses().get("spider").getId(), is("spider"));
+            assertThat(model.getBosses().get("spider").getXp(), is(50.0));
+        }
+
+        @Test
+        public void listCollapse_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Test",
+                    "bosses": {
+                        "zombie": {"xp": 100.0, "level": 5},
+                        "spider": {"xp": 50.0, "level": 3}
+                    }
+                }
+                """;
+
+            ListCollapseModel model = gson.fromJson(json, ListCollapseModel.class);
+
+            assertThat(model.getName(), is("Test"));
+            assertThat(model.getBosses(), hasSize(2));
+            assertThat(model.getBosses().get(0).getId(), is("zombie"));
+            assertThat(model.getBosses().get(0).getXp(), is(100.0));
+            assertThat(model.getBosses().get(0).getLevel(), is(5));
+            assertThat(model.getBosses().get(1).getId(), is("spider"));
+            assertThat(model.getBosses().get(1).getXp(), is(50.0));
+        }
+
+        @Test
+        public void mapCollapseRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "RT",
+                    "bosses": {
+                        "zombie": {"xp": 100.0, "level": 5},
+                        "spider": {"xp": 50.0, "level": 3}
+                    }
+                }
+                """;
+
+            MapCollapseModel first = gson.fromJson(json, MapCollapseModel.class);
+            String serialized = gson.toJson(first);
+            MapCollapseModel second = gson.fromJson(serialized, MapCollapseModel.class);
+
+            assertThat(second.getName(), is("RT"));
+            assertThat(second.getBosses(), aMapWithSize(2));
+            assertThat(second.getBosses().get("zombie").getId(), is("zombie"));
+            assertThat(second.getBosses().get("zombie").getXp(), is(100.0));
+            assertThat(second.getBosses().get("spider").getId(), is("spider"));
+        }
+
+        @Test
+        public void listCollapseRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "RT",
+                    "bosses": {
+                        "zombie": {"xp": 100.0, "level": 5},
+                        "spider": {"xp": 50.0, "level": 3}
+                    }
+                }
+                """;
+
+            ListCollapseModel first = gson.fromJson(json, ListCollapseModel.class);
+            String serialized = gson.toJson(first);
+
+            // Round-trip through list produces a JSON object (keyed by @Key field)
+            ListCollapseModel second = gson.fromJson(serialized, ListCollapseModel.class);
+
+            assertThat(second.getBosses(), hasSize(2));
+            assertThat(second.getBosses().get(0).getId(), is("zombie"));
+            assertThat(second.getBosses().get(0).getXp(), is(100.0));
+            assertThat(second.getBosses().get(1).getId(), is("spider"));
+        }
+
+        @Test
+        public void emptyCollapse_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Empty",
+                    "bosses": {}
+                }
+                """;
+
+            MapCollapseModel model = gson.fromJson(json, MapCollapseModel.class);
+
+            assertThat(model.getName(), is("Empty"));
+            assertThat(model.getBosses(), anEmptyMap());
+        }
+
+        @Test
+        public void mapAndListProduceSameValues_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Same",
+                    "bosses": {
+                        "enderman": {"xp": 200.0, "level": 7}
+                    }
+                }
+                """;
+
+            MapCollapseModel mapModel = gson.fromJson(json, MapCollapseModel.class);
+            ListCollapseModel listModel = gson.fromJson(json, ListCollapseModel.class);
+
+            Boss fromMap = mapModel.getBosses().get("enderman");
+            Boss fromList = listModel.getBosses().get(0);
+
+            assertThat(fromMap.getId(), is(fromList.getId()));
+            assertThat(fromMap.getXp(), is(fromList.getXp()));
+            assertThat(fromMap.getLevel(), is(fromList.getLevel()));
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class NoKeyBoss {
+
+            private double xp;
+            private int level;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class NoKeyMapModel {
+
+            @Collapse
+            @SerializedName("bosses")
+            private ConcurrentMap<String, NoKeyBoss> bosses = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class NoKeyListModel {
+
+            @Collapse
+            @SerializedName("bosses")
+            private ConcurrentList<NoKeyBoss> bosses = Concurrent.newList();
+
+        }
+
+        @Test
+        public void mapCollapseNoKey_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "bosses": {
+                        "zombie": {"xp": 100.0, "level": 5},
+                        "spider": {"xp": 50.0, "level": 3}
+                    }
+                }
+                """;
+
+            NoKeyMapModel model = gson.fromJson(json, NoKeyMapModel.class);
+
+            assertThat(model.getBosses(), aMapWithSize(2));
+            assertThat(model.getBosses().get("zombie").getXp(), is(100.0));
+            assertThat(model.getBosses().get("spider").getLevel(), is(3));
+        }
+
+        @Test
+        public void mapCollapseNoKeyRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "bosses": {
+                        "zombie": {"xp": 100.0, "level": 5}
+                    }
+                }
+                """;
+
+            NoKeyMapModel first = gson.fromJson(json, NoKeyMapModel.class);
+            String serialized = gson.toJson(first);
+            NoKeyMapModel second = gson.fromJson(serialized, NoKeyMapModel.class);
+
+            assertThat(second.getBosses(), aMapWithSize(1));
+            assertThat(second.getBosses().get("zombie").getXp(), is(100.0));
+            assertThat(second.getBosses().get("zombie").getLevel(), is(5));
+        }
+
+        @Test
+        public void listCollapseNoKey_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "bosses": {
+                        "zombie": {"xp": 100.0, "level": 5},
+                        "spider": {"xp": 50.0, "level": 3}
+                    }
+                }
+                """;
+
+            NoKeyListModel model = gson.fromJson(json, NoKeyListModel.class);
+
+            assertThat(model.getBosses(), hasSize(2));
+            assertThat(model.getBosses().get(0).getXp(), is(100.0));
+            assertThat(model.getBosses().get(1).getLevel(), is(3));
+        }
+
+        @Test
+        public void listCollapseNoKeyRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "bosses": {
+                        "zombie": {"xp": 100.0, "level": 5},
+                        "spider": {"xp": 50.0, "level": 3}
+                    }
+                }
+                """;
+
+            NoKeyListModel first = gson.fromJson(json, NoKeyListModel.class);
+            String serialized = gson.toJson(first);
+            NoKeyListModel second = gson.fromJson(serialized, NoKeyListModel.class);
+
+            assertThat(second.getBosses(), hasSize(2));
+            assertThat(second.getBosses().get(0).getXp(), is(100.0));
+            assertThat(second.getBosses().get(0).getLevel(), is(5));
+            assertThat(second.getBosses().get(1).getXp(), is(50.0));
+            assertThat(second.getBosses().get(1).getLevel(), is(3));
+        }
+
     }
 
     // ──── SplitTypeAdapterFactory ────
@@ -1278,6 +1777,387 @@ public class GsonFactoryTest {
             assertThat(second.getFirstName(), is(first.getFirstName()));
             assertThat(second.getLastName(), is(first.getLastName()));
             assertThat(second.getFullName(), is("Alice Smith"));
+        }
+
+    }
+
+    // ──── Cross-Annotation Combination Tests ────
+
+    @Nested
+    class CombinationTests {
+
+        // --- @Capture(descend = true) with grouping ---
+
+        @Getter
+        @NoArgsConstructor
+        static class ClaimedLevel {
+
+            @SerializedName("")
+            private boolean claimed;
+            private boolean special;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class DescendCaptureModel {
+
+            private double xp;
+            @Capture(filter = "^level_", descend = true)
+            @SerializedName("claimed_levels")
+            private ConcurrentMap<Integer, ClaimedLevel> claimedLevels = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void descendCapture_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "xp": 100.0,
+                    "claimed_levels": {
+                        "level_1": true,
+                        "level_2": true,
+                        "level_8": true,
+                        "level_8_special": true
+                    }
+                }
+                """;
+
+            DescendCaptureModel model = gson.fromJson(json, DescendCaptureModel.class);
+
+            assertThat(model.getXp(), is(100.0));
+            assertThat(model.getClaimedLevels(), aMapWithSize(3));
+            assertThat(model.getClaimedLevels().get(1).isClaimed(), is(true));
+            assertThat(model.getClaimedLevels().get(1).isSpecial(), is(false));
+            assertThat(model.getClaimedLevels().get(2).isClaimed(), is(true));
+            assertThat(model.getClaimedLevels().get(8).isClaimed(), is(true));
+            assertThat(model.getClaimedLevels().get(8).isSpecial(), is(true));
+        }
+
+        @Test
+        public void descendCaptureRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "xp": 100.0,
+                    "claimed_levels": {
+                        "level_1": true,
+                        "level_8": true,
+                        "level_8_special": true
+                    }
+                }
+                """;
+
+            DescendCaptureModel first = gson.fromJson(json, DescendCaptureModel.class);
+            String serialized = gson.toJson(first);
+            DescendCaptureModel second = gson.fromJson(serialized, DescendCaptureModel.class);
+
+            assertThat(second.getXp(), is(100.0));
+            assertThat(second.getClaimedLevels(), aMapWithSize(2));
+            assertThat(second.getClaimedLevels().get(1).isClaimed(), is(true));
+            assertThat(second.getClaimedLevels().get(8).isClaimed(), is(true));
+            assertThat(second.getClaimedLevels().get(8).isSpecial(), is(true));
+        }
+
+        @Test
+        public void descendCaptureSimple_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "xp": 50.0,
+                    "claimed_levels": {
+                        "level_1": true,
+                        "level_3": true
+                    }
+                }
+                """;
+
+            DescendCaptureModel model = gson.fromJson(json, DescendCaptureModel.class);
+
+            assertThat(model.getClaimedLevels(), aMapWithSize(2));
+            assertThat(model.getClaimedLevels().get(1).isClaimed(), is(true));
+            assertThat(model.getClaimedLevels().get(1).isSpecial(), is(false));
+            assertThat(model.getClaimedLevels().get(3).isClaimed(), is(true));
+        }
+
+        // --- @Collapse + @Capture on inner type ---
+
+        @Getter
+        @NoArgsConstructor
+        static class InnerBoss {
+
+            @Key
+            private transient String id;
+            @SerializedName("xp")
+            private double experience;
+            @Capture(filter = "^boss_kills_tier_")
+            private ConcurrentMap<Integer, Integer> kills = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class CollapseWithCaptureModel {
+
+            private String name;
+            @Collapse
+            @SerializedName("bosses")
+            private ConcurrentList<InnerBoss> bosses = Concurrent.newList();
+
+        }
+
+        @Test
+        public void collapseWithCapture_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Test",
+                    "bosses": {
+                        "zombie": {
+                            "xp": 100.0,
+                            "boss_kills_tier_0": 10,
+                            "boss_kills_tier_1": 5
+                        },
+                        "spider": {
+                            "xp": 50.0,
+                            "boss_kills_tier_0": 3
+                        }
+                    }
+                }
+                """;
+
+            CollapseWithCaptureModel model = gson.fromJson(json, CollapseWithCaptureModel.class);
+
+            assertThat(model.getName(), is("Test"));
+            assertThat(model.getBosses(), hasSize(2));
+
+            InnerBoss zombie = model.getBosses().get(0);
+            assertThat(zombie.getId(), is("zombie"));
+            assertThat(zombie.getExperience(), is(100.0));
+            assertThat(zombie.getKills(), aMapWithSize(2));
+            assertThat(zombie.getKills(), hasEntry(0, 10));
+            assertThat(zombie.getKills(), hasEntry(1, 5));
+
+            InnerBoss spider = model.getBosses().get(1);
+            assertThat(spider.getId(), is("spider"));
+            assertThat(spider.getExperience(), is(50.0));
+            assertThat(spider.getKills(), aMapWithSize(1));
+            assertThat(spider.getKills(), hasEntry(0, 3));
+        }
+
+        @Test
+        public void collapseWithCaptureRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "RT",
+                    "bosses": {
+                        "zombie": {
+                            "xp": 100.0,
+                            "boss_kills_tier_0": 10
+                        }
+                    }
+                }
+                """;
+
+            CollapseWithCaptureModel first = gson.fromJson(json, CollapseWithCaptureModel.class);
+            String serialized = gson.toJson(first);
+            CollapseWithCaptureModel second = gson.fromJson(serialized, CollapseWithCaptureModel.class);
+
+            assertThat(second.getBosses(), hasSize(1));
+            assertThat(second.getBosses().get(0).getId(), is("zombie"));
+            assertThat(second.getBosses().get(0).getExperience(), is(100.0));
+            assertThat(second.getBosses().get(0).getKills(), hasEntry(0, 10));
+        }
+
+        // --- @Collapse + @Capture(descend=true) on inner type ---
+
+        @Getter
+        @NoArgsConstructor
+        static class FullBoss {
+
+            @Key
+            private transient String id;
+            @SerializedName("xp")
+            private double experience;
+            @Capture(filter = "^boss_kills_tier_")
+            private ConcurrentMap<Integer, Integer> kills = Concurrent.newMap();
+            @Capture(filter = "^level_", descend = true)
+            @SerializedName("claimed_levels")
+            private ConcurrentMap<Integer, ClaimedLevel> claimedLevels = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FullSlayersModel {
+
+            @Collapse
+            @SerializedName("slayer_bosses")
+            private ConcurrentList<FullBoss> bosses = Concurrent.newList();
+
+        }
+
+        @Test
+        public void collapseWithCaptureAndDescend_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "slayer_bosses": {
+                        "zombie": {
+                            "xp": 2000.0,
+                            "boss_kills_tier_0": 18,
+                            "boss_kills_tier_3": 100,
+                            "claimed_levels": {
+                                "level_1": true,
+                                "level_5": true,
+                                "level_5_special": true
+                            }
+                        }
+                    }
+                }
+                """;
+
+            FullSlayersModel model = gson.fromJson(json, FullSlayersModel.class);
+
+            assertThat(model.getBosses(), hasSize(1));
+
+            FullBoss zombie = model.getBosses().get(0);
+            assertThat(zombie.getId(), is("zombie"));
+            assertThat(zombie.getExperience(), is(2000.0));
+            assertThat(zombie.getKills(), hasEntry(0, 18));
+            assertThat(zombie.getKills(), hasEntry(3, 100));
+            assertThat(zombie.getClaimedLevels(), aMapWithSize(2));
+            assertThat(zombie.getClaimedLevels().get(1).isClaimed(), is(true));
+            assertThat(zombie.getClaimedLevels().get(5).isClaimed(), is(true));
+            assertThat(zombie.getClaimedLevels().get(5).isSpecial(), is(true));
+        }
+
+        @Test
+        public void collapseWithCaptureAndDescendRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "slayer_bosses": {
+                        "zombie": {
+                            "xp": 2000.0,
+                            "boss_kills_tier_0": 18,
+                            "claimed_levels": {
+                                "level_1": true,
+                                "level_5": true,
+                                "level_5_special": true
+                            }
+                        }
+                    }
+                }
+                """;
+
+            FullSlayersModel first = gson.fromJson(json, FullSlayersModel.class);
+            String serialized = gson.toJson(first);
+            FullSlayersModel second = gson.fromJson(serialized, FullSlayersModel.class);
+
+            FullBoss zombie = second.getBosses().get(0);
+            assertThat(zombie.getId(), is("zombie"));
+            assertThat(zombie.getExperience(), is(2000.0));
+            assertThat(zombie.getKills(), hasEntry(0, 18));
+            assertThat(zombie.getClaimedLevels().get(1).isClaimed(), is(true));
+            assertThat(zombie.getClaimedLevels().get(5).isClaimed(), is(true));
+            assertThat(zombie.getClaimedLevels().get(5).isSpecial(), is(true));
+        }
+
+        // --- @Lenient + @Capture on same class ---
+
+        @Getter
+        @NoArgsConstructor
+        static class LenientWithCaptureModel {
+
+            private String name;
+            @Lenient
+            private ConcurrentMap<String, Integer> stats = Concurrent.newMap();
+            @Capture(filter = "^bonus_")
+            private ConcurrentMap<String, Integer> bonuses = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void lenientWithCapture_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Player",
+                    "stats": {
+                        "health": 100,
+                        "defense": 50,
+                        "last_update": "2024-01-01"
+                    },
+                    "bonus_health": 10,
+                    "bonus_defense": 5
+                }
+                """;
+
+            LenientWithCaptureModel model = gson.fromJson(json, LenientWithCaptureModel.class);
+
+            assertThat(model.getName(), is("Player"));
+            assertThat(model.getStats(), aMapWithSize(2));
+            assertThat(model.getStats(), hasEntry("health", 100));
+            assertThat(model.getStats(), hasEntry("defense", 50));
+            assertThat(model.getBonuses(), aMapWithSize(2));
+            assertThat(model.getBonuses(), hasEntry("health", 10));
+            assertThat(model.getBonuses(), hasEntry("defense", 5));
+        }
+
+        // --- @Lenient + @Extract + @Capture on same class ---
+
+        @Getter
+        @NoArgsConstructor
+        static class FullCombinationModel {
+
+            private String id;
+            @Lenient
+            private ConcurrentMap<String, Integer> kills = Concurrent.newMap();
+            @Extract("kills.last_killed_mob")
+            private String lastKilledMob;
+            @Capture(filter = "^stat_")
+            private ConcurrentMap<String, Integer> stats = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void lenientExtractCapture_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "id": "player1",
+                    "kills": {
+                        "zombie_1": 5,
+                        "spider_2": 3,
+                        "last_killed_mob": "ashfang"
+                    },
+                    "stat_health": 100,
+                    "stat_defense": 50
+                }
+                """;
+
+            FullCombinationModel model = gson.fromJson(json, FullCombinationModel.class);
+
+            assertThat(model.getId(), is("player1"));
+            assertThat(model.getKills(), aMapWithSize(2));
+            assertThat(model.getKills(), hasEntry("zombie_1", 5));
+            assertThat(model.getKills(), hasEntry("spider_2", 3));
+            assertThat(model.getLastKilledMob(), is("ashfang"));
+            assertThat(model.getStats(), aMapWithSize(2));
+            assertThat(model.getStats(), hasEntry("health", 100));
+            assertThat(model.getStats(), hasEntry("defense", 50));
         }
 
     }
