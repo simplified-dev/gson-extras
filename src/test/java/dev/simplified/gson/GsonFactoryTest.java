@@ -1542,8 +1542,8 @@ public class GsonFactoryTest {
 
             assertThat(model.getName(), is("test"));
             assertThat(model.getCombo().isPresent(), is(true));
-            assertThat(model.getCombo().getLeft(), is(Animal.CAT));
-            assertThat(model.getCombo().getRight(), is(Color.RED));
+            assertThat(model.getCombo().left(), is(Animal.CAT));
+            assertThat(model.getCombo().right(), is(Color.RED));
         }
 
         @Test
@@ -1615,8 +1615,8 @@ public class GsonFactoryTest {
 
             assertThat(second.getName(), is(first.getName()));
             assertThat(second.getCombo().isPresent(), is(true));
-            assertThat(second.getCombo().getLeft(), is(Animal.DOG));
-            assertThat(second.getCombo().getRight(), is(Color.BLUE));
+            assertThat(second.getCombo().left(), is(Animal.DOG));
+            assertThat(second.getCombo().right(), is(Color.BLUE));
         }
 
         @Test
@@ -1634,8 +1634,8 @@ public class GsonFactoryTest {
 
             assertThat(model.getId(), is("test"));
             assertThat(model.getRange(), notNullValue());
-            assertThat(model.getRange().getLeft(), is("hello"));
-            assertThat(model.getRange().getRight(), is(42));
+            assertThat(model.getRange().left(), is("hello"));
+            assertThat(model.getRange().right(), is(42));
         }
 
     }

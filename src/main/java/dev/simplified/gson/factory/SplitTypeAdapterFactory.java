@@ -95,9 +95,9 @@ public final class SplitTypeAdapterFactory implements TypeAdapterFactory {
                         continue;
                     }
 
-                    String joined = serializePart(pairOpt.getLeft(), info.getLeftType())
+                    String joined = serializePart(pairOpt.left(), info.getLeftType())
                         + info.getDelimiter()
-                        + serializePart(pairOpt.getRight(), info.getRightType());
+                        + serializePart(pairOpt.right(), info.getRightType());
                     jsonObject.add(info.getSerializedName(), new JsonPrimitive(joined));
                 } else {
                     Pair<?, ?> pair = (Pair<?, ?>) fieldValue;
@@ -107,9 +107,9 @@ public final class SplitTypeAdapterFactory implements TypeAdapterFactory {
                         continue;
                     }
 
-                    String joined = serializePart(pair.getLeft(), info.getLeftType())
+                    String joined = serializePart(pair.left(), info.getLeftType())
                         + info.getDelimiter()
-                        + serializePart(pair.getRight(), info.getRightType());
+                        + serializePart(pair.right(), info.getRightType());
                     jsonObject.add(info.getSerializedName(), new JsonPrimitive(joined));
                 }
             }
