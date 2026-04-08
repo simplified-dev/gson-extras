@@ -33,8 +33,21 @@ public final class StringTypeAdapter extends TypeAdapter<String> {
 
     @Override
     public @Nullable String read(@NotNull JsonReader in) throws IOException {
-        if (in.peek() != com.google.gson.stream.JsonToken.STRING)
+        com.google.gson.stream.JsonToken token = in.peek();
+
+        // Consume the current token regardless of its type - failing to advance the reader
+        // leaves it positioned on the unread token and the next nextName() call explodes with
+        // "Expected a name but was NULL" (or similar) because the state machine is desynced.
+        // nextNull() is required for NULL and skipValue() covers every other non-STRING shape.
+        if (token == com.google.gson.stream.JsonToken.NULL) {
+            in.nextNull();
             return null;
+        }
+
+        if (token != com.google.gson.stream.JsonToken.STRING) {
+            in.skipValue();
+            return null;
+        }
 
         String value = in.nextString();
 
