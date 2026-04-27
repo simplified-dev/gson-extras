@@ -10,11 +10,8 @@ import com.google.gson.JsonSerializer;
 import com.google.gson.TypeAdapter;
 import com.google.gson.TypeAdapterFactory;
 import dev.simplified.collection.Concurrent;
-import dev.simplified.collection.ConcurrentLinkedList;
-import dev.simplified.collection.ConcurrentLinkedMap;
 import dev.simplified.collection.ConcurrentList;
 import dev.simplified.collection.ConcurrentMap;
-import dev.simplified.collection.ConcurrentSet;
 import dev.simplified.gson.adapter.ColorTypeAdapter;
 import dev.simplified.gson.adapter.InstantTypeAdapter;
 import dev.simplified.gson.adapter.OffsetDateTimeTypeAdapter;
@@ -131,10 +128,17 @@ public class GsonSettings {
      *       {@link SplitTypeAdapterFactory}, {@link SerializedPathTypeAdaptorFactory},
      *       {@link LenientTypeAdapterFactory}, {@link CaptureTypeAdapterFactory},
      *       {@link CollapseTypeAdapterFactory}, {@link PostInitTypeAdapterFactory}</li>
+     *   <li><b>SPI factories</b> - every {@link TypeAdapterFactory} discovered on the
+     *       classpath via {@link ServiceLoader#load(Class)
+     *       ServiceLoader.load(TypeAdapterFactory.class)}. The collections module
+     *       ships {@code dev.simplified.collection.gson.ConcurrentTypeAdapterFactory}
+     *       through this SPI to teach Gson the {@code Concurrent*} interfaces; downstream
+     *       modules can ship their own factory by adding a
+     *       {@code META-INF/services/com.google.gson.TypeAdapterFactory} service file</li>
      * </ul>
      * <p>
-     * After the built-ins are registered, every {@link GsonContributor} discovered on the
-     * classpath via {@link ServiceLoader} is applied in ascending
+     * After the built-ins and SPI factories are registered, every {@link GsonContributor}
+     * discovered on the classpath via {@link ServiceLoader} is applied in ascending
      * {@link GsonContributor#priority() priority} order. Downstream modules contribute
      * their own type adapters or exclusion strategies by shipping a
      * {@code META-INF/services/dev.simplified.gson.GsonContributor} service file.
@@ -153,11 +157,6 @@ public class GsonSettings {
             .withTypeAdapter(Instant.class, new InstantTypeAdapter())
             .withTypeAdapter(OffsetDateTime.class, new OffsetDateTimeTypeAdapter())
             .withTypeAdapter(UUID.class, new UUIDTypeAdapter())
-            .withTypeAdapter(ConcurrentList.class, (InstanceCreator<ConcurrentList<?>>) type -> Concurrent.newList())
-            .withTypeAdapter(ConcurrentMap.class, (InstanceCreator<ConcurrentMap<?, ?>>) type -> Concurrent.newMap())
-            .withTypeAdapter(ConcurrentSet.class, (InstanceCreator<ConcurrentSet<?>>) type -> Concurrent.newSet())
-            .withTypeAdapter(ConcurrentLinkedList.class, (InstanceCreator<ConcurrentLinkedList<?>>) type -> Concurrent.newLinkedList())
-            .withTypeAdapter(ConcurrentLinkedMap.class, (InstanceCreator<ConcurrentLinkedMap<?, ?>>) type -> Concurrent.newLinkedMap())
             .withFactories(
                 new CaseInsensitiveEnumTypeAdapterFactory(),
                 new OptionalTypeAdapterFactory(),
@@ -168,6 +167,8 @@ public class GsonSettings {
                 new CollapseTypeAdapterFactory(),
                 new PostInitTypeAdapterFactory()
             );
+
+        ServiceLoader.load(TypeAdapterFactory.class).forEach(builder::withFactories);
 
         StreamSupport.stream(ServiceLoader.load(GsonContributor.class).spliterator(), false)
             .sorted(Comparator.comparingInt(GsonContributor::priority))
