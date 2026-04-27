@@ -10,8 +10,11 @@ import com.google.gson.JsonSerializer;
 import com.google.gson.TypeAdapter;
 import com.google.gson.TypeAdapterFactory;
 import dev.simplified.collection.Concurrent;
+import dev.simplified.collection.ConcurrentLinkedList;
+import dev.simplified.collection.ConcurrentLinkedMap;
 import dev.simplified.collection.ConcurrentList;
 import dev.simplified.collection.ConcurrentMap;
+import dev.simplified.collection.ConcurrentSet;
 import dev.simplified.gson.adapter.ColorTypeAdapter;
 import dev.simplified.gson.adapter.InstantTypeAdapter;
 import dev.simplified.gson.adapter.OffsetDateTimeTypeAdapter;
@@ -150,6 +153,11 @@ public class GsonSettings {
             .withTypeAdapter(Instant.class, new InstantTypeAdapter())
             .withTypeAdapter(OffsetDateTime.class, new OffsetDateTimeTypeAdapter())
             .withTypeAdapter(UUID.class, new UUIDTypeAdapter())
+            .withTypeAdapter(ConcurrentList.class, (InstanceCreator<ConcurrentList<?>>) type -> Concurrent.newList())
+            .withTypeAdapter(ConcurrentMap.class, (InstanceCreator<ConcurrentMap<?, ?>>) type -> Concurrent.newMap())
+            .withTypeAdapter(ConcurrentSet.class, (InstanceCreator<ConcurrentSet<?>>) type -> Concurrent.newSet())
+            .withTypeAdapter(ConcurrentLinkedList.class, (InstanceCreator<ConcurrentLinkedList<?>>) type -> Concurrent.newLinkedList())
+            .withTypeAdapter(ConcurrentLinkedMap.class, (InstanceCreator<ConcurrentLinkedMap<?, ?>>) type -> Concurrent.newLinkedMap())
             .withFactories(
                 new CaseInsensitiveEnumTypeAdapterFactory(),
                 new OptionalTypeAdapterFactory(),
