@@ -78,6 +78,13 @@ public class GsonSettings {
     private final boolean serializingNulls;
 
     /**
+     * Whether HTML-sensitive characters are escaped in serialized output. Defaults to
+     * {@code true} - Gson's standard behaviour. Set to {@code false} to emit raw
+     * characters via {@link GsonBuilder#disableHtmlEscaping()}.
+     */
+    private final boolean htmlEscaping;
+
+    /**
      * Strategy for handling empty and null strings during serialization.
      */
     private final @NotNull StringType stringType;
@@ -145,6 +152,9 @@ public class GsonSettings {
 
         if (this.isSerializingNulls())
             builder.serializeNulls();
+
+        if (!this.isHtmlEscaping())
+            builder.disableHtmlEscaping();
 
         this.getExclusionStrategies().forEach(strategy -> {
             builder.addSerializationExclusionStrategy(strategy);
@@ -266,6 +276,7 @@ public class GsonSettings {
             .withDateFormat(gsonSettings.getDateFormat())
             .withStyle(gsonSettings.getStyle())
             .isSerializingNulls(gsonSettings.isSerializingNulls())
+            .isHtmlEscaping(gsonSettings.isHtmlEscaping())
             .withStringType(gsonSettings.getStringType())
             .withTypeAdapters(gsonSettings.getTypeAdapters())
             .withFactories(gsonSettings.getFactories())
@@ -291,6 +302,7 @@ public class GsonSettings {
         private Optional<String> dateFormat = Optional.empty();
         private FormattingStyle style = FormattingStyle.COMPACT;
         private boolean serializingNulls;
+        private boolean htmlEscaping = true;
         private StringType stringType = StringType.DEFAULT;
         private ConcurrentMap<Type, Object> typeAdapters = Concurrent.newMap();
         private ConcurrentList<TypeAdapterFactory> factories = Concurrent.newList();
@@ -329,6 +341,23 @@ public class GsonSettings {
          */
         public @NotNull Builder isSerializingNulls(boolean value) {
             this.serializingNulls = value;
+            return this;
+        }
+
+        /**
+         * Enables HTML escaping.
+         */
+        public @NotNull Builder isHtmlEscaping() {
+            return this.isHtmlEscaping(true);
+        }
+
+        /**
+         * Sets whether HTML-sensitive characters are escaped in serialized output.
+         *
+         * @param value {@code true} to escape HTML, {@code false} to emit raw characters
+         */
+        public @NotNull Builder isHtmlEscaping(boolean value) {
+            this.htmlEscaping = value;
             return this;
         }
 
@@ -563,6 +592,7 @@ public class GsonSettings {
                 this.dateFormat,
                 this.style,
                 this.serializingNulls,
+                this.htmlEscaping,
                 this.stringType,
                 this.typeAdapters,
                 this.factories,

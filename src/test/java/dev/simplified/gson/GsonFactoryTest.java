@@ -2162,4 +2162,42 @@ public class GsonFactoryTest {
 
     }
 
+    // ──── HTML escaping toggle ────
+
+    @Nested
+    class HtmlEscapingTests {
+
+        @Test
+        public void defaultEscapesHtml_ok() {
+            Gson gson = GsonSettings.defaults().create();
+
+            // '=' is HTML-escaped to its unicode form by default
+            assertThat(gson.toJson("a=b"), is("\"a\\u003db\""));
+        }
+
+        @Test
+        public void disabledEmitsRaw_ok() {
+            Gson gson = GsonSettings.defaults()
+                .mutate()
+                .isHtmlEscaping(false)
+                .build()
+                .create();
+
+            assertThat(gson.toJson("a=b"), is("\"a=b\""));
+        }
+
+        @Test
+        public void mutateCarriesFlag_ok() {
+            GsonSettings settings = GsonSettings.defaults()
+                .mutate()
+                .isHtmlEscaping(false)
+                .build();
+
+            assertThat(settings.isHtmlEscaping(), is(false));
+            // defaults() leaves escaping on
+            assertThat(GsonSettings.defaults().isHtmlEscaping(), is(true));
+        }
+
+    }
+
 }
