@@ -1,4 +1,4 @@
-package dev.simplified.gson;
+package dev.simplified.gson.annotation;
 
 import dev.simplified.gson.factory.LenientTypeAdapterFactory;
 import org.jetbrains.annotations.NotNull;

@@ -1,4 +1,4 @@
-package dev.simplified.gson;
+package dev.simplified.gson.annotation;
 
 import com.google.gson.annotations.SerializedName;
 import dev.simplified.gson.factory.SerializedPathTypeAdaptorFactory;

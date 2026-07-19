@@ -1,4 +1,4 @@
-package dev.simplified.gson;
+package dev.simplified.gson.annotation;
 
 import dev.simplified.gson.factory.SplitTypeAdapterFactory;
 import dev.simplified.collection.tuple.pair.Pair;

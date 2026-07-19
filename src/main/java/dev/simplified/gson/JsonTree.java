@@ -1,4 +1,4 @@
-package dev.simplified.gson.node;
+package dev.simplified.gson;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -12,7 +12,6 @@ import dev.simplified.collection.ConcurrentMap;
 import dev.simplified.collection.tuple.pair.PairOptional;
 import dev.simplified.collection.tuple.pair.PairStream;
 import dev.simplified.collection.tuple.single.SingleStream;
-import dev.simplified.gson.GsonSettings;
 import dev.simplified.gson.exception.JsonException;
 import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;

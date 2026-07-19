@@ -1,8 +1,7 @@
-package dev.simplified.gson.node;
+package dev.simplified.gson;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonPrimitive;
-import dev.simplified.gson.GsonSettings;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

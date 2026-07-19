@@ -1,8 +1,7 @@
-package dev.simplified.gson.node;
+package dev.simplified.gson;
 
 import com.google.gson.reflect.TypeToken;
 import dev.simplified.collection.tuple.pair.PairOptional;
-import dev.simplified.gson.GsonSettings;
 import dev.simplified.gson.exception.JsonException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
