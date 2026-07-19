@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -61,9 +62,9 @@ class JsonTreeTest {
     @DisplayName("conditional puts follow the empty-vs-absent rule; putUnless omits at default")
     void conditionalPuts() {
         JsonTree node = JsonTree.object()
-            .putIf("absent", (String) null)
-            .putIf("present", "x")
-            .putIf("absentNode", (JsonTree) null)
+            .putIf("absent", (String) null)                 // @Nullable String overload
+            .putIf("present", Optional.of("x"))             // generic Optional overload
+            .putIf("absentNode", (JsonTree) null)           // @Nullable JsonTree overload
             .putUnless("atDefault", 1.0f, 1.0f)
             .putUnless("offDefault", 0.5f, 1.0f)
             .putHex("color", 0xFFE6E6E6);

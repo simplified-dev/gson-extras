@@ -162,27 +162,46 @@ public final class JsonTree {
     }
 
     /**
-     * Adds a nested node member only when {@code value} is non-null (the empty-vs-absent
-     * rule: null means the key is omitted).
+     * Adds a member only when {@code value} is present - the empty-vs-absent rule: an empty
+     * {@link Optional} omits the key. The present value must be a {@link String} or a {@link JsonTree}
+     * (the two conditional-put value kinds); any other present type is a programmer error and throws.
      *
      * @param key the member name
-     * @param value the node, or {@code null} to omit
+     * @param value the optional value put when present
+     * @param <T> the value type - {@link String} or {@link JsonTree}
      * @return this node
+     * @throws JsonException when a present value is neither a {@link String} nor a {@link JsonTree}
      */
-    public @NotNull JsonTree putIf(@NotNull String key, @Nullable JsonTree value) {
-        if (value != null) asObject().add(key, value.element);
+    public <T> @NotNull JsonTree putIf(@NotNull String key, @NotNull Optional<T> value) {
+        value.ifPresent(present -> putResolved(key, present));
         return this;
     }
 
     /**
-     * Adds a string member only when {@code value} is non-null.
+     * Adds a string member only when {@code value} is non-null - the nullable-argument sibling of
+     * {@link #putIf(String, Optional)} ({@code null} is treated as absent, same as an empty
+     * {@link Optional}).
      *
      * @param key the member name
      * @param value the string, or {@code null} to omit
      * @return this node
      */
     public @NotNull JsonTree putIf(@NotNull String key, @Nullable String value) {
-        if (value != null) asObject().addProperty(key, value);
+        if (value != null) putResolved(key, value);
+        return this;
+    }
+
+    /**
+     * Adds a nested node member only when {@code value} is non-null - the nullable-argument sibling of
+     * {@link #putIf(String, Optional)} ({@code null} is treated as absent, same as an empty
+     * {@link Optional}).
+     *
+     * @param key the member name
+     * @param value the node, or {@code null} to omit
+     * @return this node
+     */
+    public @NotNull JsonTree putIf(@NotNull String key, @Nullable JsonTree value) {
+        if (value != null) putResolved(key, value);
         return this;
     }
 
@@ -1997,6 +2016,16 @@ public final class JsonTree {
         if (!(this.element instanceof JsonArray array))
             throw new IllegalStateException("Not an array node: " + this.element.getClass().getSimpleName());
         return array;
+    }
+
+    private void putResolved(@NotNull String key, @NotNull Object value) {
+        JsonObject object = asObject();
+        switch (value) {
+            case JsonTree tree -> object.add(key, tree.element);
+            case String string -> object.addProperty(key, string);
+            default -> throw new JsonException(
+                "putIf accepts only String or JsonTree, got '%s' for key '%s'", value.getClass().getName(), key);
+        }
     }
 
     private @NotNull Optional<JsonTree> step(@NotNull String segment) {
