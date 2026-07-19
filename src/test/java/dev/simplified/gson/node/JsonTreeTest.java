@@ -14,11 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -92,36 +90,36 @@ class JsonTreeTest {
     void readSide() {
         JsonTree node = JsonTree.parse("{\"s\":\"v\",\"f\":1.5,\"i\":7,\"b\":true,\"o\":{\"k\":\"w\"},\"a\":[\"x\",\"y\"]}"
             .getBytes(StandardCharsets.UTF_8));
-        assertEquals("v", node.getString("s"));
-        assertNull(node.getString("missing"));
+        assertEquals("v", node.findString("s").orElseThrow());
+        assertTrue(node.findString("missing").isEmpty());
         assertEquals("dflt", node.getString("missing", "dflt"));
         assertEquals(1.5f, node.getFloat("f", 0f));
         assertEquals(0.25f, node.getFloat("missing", 0.25f));
         assertEquals(7, node.getInt("i", 0));
-        assertTrue(node.getBool("b", false));
-        assertNull(node.get("missing"));
-        assertEquals("w", node.get("o").getString("k"));
+        assertTrue(node.getBoolean("b", false));
+        assertTrue(node.find("missing").isEmpty());
+        assertEquals("w", node.find("o").orElseThrow().findString("k").orElseThrow());
         List<String> keys = new ArrayList<>();
-        for (Map.Entry<String, JsonTree> member : node.members()) keys.add(member.getKey());
+        node.members().forEach((key, value) -> keys.add(key));
         assertEquals(List.of("s", "f", "i", "b", "o", "a"), keys);
         List<String> values = new ArrayList<>();
-        for (JsonTree element : node.get("a").elements()) values.add(element.toGson().getAsString());
+        node.find("a").orElseThrow().elements().forEach(element -> values.add(element.toGson().getAsString()));
         assertEquals(List.of("x", "y"), values);
     }
 
     @Test
-    @DisplayName("at() bounds-checks arrays; floatValue() defaults on any non-number")
+    @DisplayName("findAt bounds-checks arrays; asFloat() defaults on any non-number")
     void arrayIndexAndFloatValue() {
         JsonTree node = JsonTree.parse("{\"a\":[30,45.5,\"roll\"],\"s\":\"x\"}".getBytes(StandardCharsets.UTF_8));
-        JsonTree array = node.get("a");
-        assertEquals(30f, array.at(0).floatValue(0f));
-        assertEquals(45.5f, array.at(1).floatValue(0f));
-        assertEquals(9f, array.at(2).floatValue(9f));          // string primitive -> default, never a parse throw
-        assertNull(array.at(3));
-        assertNull(array.at(-1));
-        assertNull(node.get("s").at(0));                       // non-array -> null
-        assertEquals(9f, node.get("s").floatValue(9f));
-        assertEquals(9f, node.get("a").floatValue(9f));        // non-primitive -> default
+        JsonTree array = node.find("a").orElseThrow();
+        assertEquals(30f, array.getFloat(0, 0f));
+        assertEquals(45.5f, array.getFloat(1, 0f));
+        assertEquals(9f, array.getFloat(2, 9f));               // string primitive -> default, never a parse throw
+        assertTrue(array.findAt(3).isEmpty());
+        assertTrue(array.findAt(-1).isEmpty());
+        assertTrue(node.find("s").orElseThrow().findAt(0).isEmpty());  // non-array -> empty
+        assertEquals(9f, node.find("s").orElseThrow().asFloat(9f));
+        assertEquals(9f, node.find("a").orElseThrow().asFloat(9f));    // non-primitive -> default
     }
 
     @Test
@@ -136,8 +134,6 @@ class JsonTreeTest {
             written.lastIndexOf(System.lineSeparator()), "exactly one trailing newline");
     }
 
-    // --- the added total read surface (P4/E2) ---
-
     @Test
     @DisplayName("kind predicates + size classify object / array / primitive")
     void kindPredicates() {
@@ -147,10 +143,10 @@ class JsonTreeTest {
         assertEquals(3, node.size());
         assertTrue(node.has("o"));
         assertFalse(node.has("missing"));
-        assertTrue(node.get("arr").isArray());
-        assertEquals(3, node.get("arr").size());
-        assertTrue(node.get("s").isPrimitive());
-        assertEquals(0, node.get("s").size());
+        assertTrue(node.find("arr").orElseThrow().isArray());
+        assertEquals(3, node.find("arr").orElseThrow().size());
+        assertTrue(node.find("s").orElseThrow().isPrimitive());
+        assertEquals(0, node.find("s").orElseThrow().size());
     }
 
     @Test
@@ -161,41 +157,41 @@ class JsonTreeTest {
         assertEquals("v", node.findString("s").orElseThrow());
         assertEquals(7, node.findInt("i").orElseThrow());
         assertEquals(1.5f, node.findFloat("f").orElseThrow());
-        assertTrue(node.findBool("b").orElseThrow());
+        assertTrue(node.findBoolean("b").orElseThrow());
         assertTrue(node.findObject("o").isPresent());
         assertTrue(node.findArray("a").isPresent());
         assertTrue(node.findInt("s").isEmpty());        // string is not a number
         assertTrue(node.findObject("a").isEmpty());     // array is not an object
         assertTrue(node.findString("missing").isEmpty());
         assertTrue(node.find("missing").isEmpty());
-        assertTrue(node.get("s").findString("anything").isEmpty());   // total even on a non-object node
+        assertTrue(node.find("s").orElseThrow().findString("anything").isEmpty());   // total even on a non-object node
     }
 
     @Test
-    @DisplayName("self-value reads return empty on kind mismatch")
+    @DisplayName("self-value coercions return empty on kind mismatch")
     void selfValueReads() {
         JsonTree node = JsonTree.parse("{\"s\":\"v\",\"i\":7,\"b\":true}".getBytes(StandardCharsets.UTF_8));
-        assertEquals("v", node.get("s").stringValue().orElseThrow());
-        assertEquals(7, node.get("i").intValue().orElseThrow());
-        assertTrue(node.get("b").boolValue().orElseThrow());
-        assertTrue(node.get("s").intValue().isEmpty());     // string primitive is not a number
-        assertTrue(node.get("i").boolValue().isEmpty());
+        assertEquals("v", node.find("s").orElseThrow().asString().orElseThrow());
+        assertEquals(7, node.find("i").orElseThrow().asInt().orElseThrow());
+        assertTrue(node.find("b").orElseThrow().asBool().orElseThrow());
+        assertTrue(node.find("s").orElseThrow().asInt().isEmpty());     // string primitive is not a number
+        assertTrue(node.find("i").orElseThrow().asBool().isEmpty());
     }
 
     @Test
-    @DisplayName("primitive-array getters skip mismatched entries; streams are empty on wrong kind")
+    @DisplayName("primitive-array streams skip mismatched entries; streams are empty on wrong kind")
     void arraysAndStreams() {
         JsonTree node = JsonTree.parse("{\"ints\":[1,2,3],\"floats\":[0.5,1.5],\"strs\":[\"a\",\"b\"],\"mixed\":[1,\"x\",true]}"
             .getBytes(StandardCharsets.UTF_8));
-        assertEquals(List.of(1, 2, 3), node.getInts("ints"));
-        assertEquals(List.of(0.5f, 1.5f), node.getFloats("floats"));
-        assertEquals(List.of("a", "b"), node.getStrings("strs"));
-        assertEquals(List.of(1), node.getInts("mixed"));            // non-numbers skipped
-        assertTrue(node.getInts("missing").isEmpty());
+        assertEquals(List.of(1, 2, 3), node.ints("ints").toList());
+        assertEquals(List.of(0.5f, 1.5f), node.floats("floats").toList());
+        assertEquals(List.of("a", "b"), node.strings("strs").toList());
+        assertEquals(List.of(1), node.ints("mixed").toList());            // non-numbers skipped
+        assertTrue(node.ints("missing").toList().isEmpty());
         assertEquals(List.of("ints", "floats", "strs", "mixed"), node.keys().toList());
-        assertEquals(3, node.get("ints").stream().count());
-        assertTrue(node.get("ints").keys().toList().isEmpty());     // array has no keys
-        assertTrue(node.get("strs").memberStream().toList().isEmpty());
+        assertEquals(3, node.find("ints").orElseThrow().elements().count());
+        assertTrue(node.find("ints").orElseThrow().keys().toList().isEmpty());     // array has no keys
+        assertTrue(node.find("strs").orElseThrow().members().toList().isEmpty());
     }
 
     @Test

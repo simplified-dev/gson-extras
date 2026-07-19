@@ -849,26 +849,14 @@ public final class JsonTree {
     }
 
     /**
-     * The string member under {@code key}, or {@code null} when absent.
-     *
-     * @param key the member name
-     * @return the string value, or {@code null}
-     */
-    public @Nullable String getString(@NotNull String key) {
-        JsonElement value = asObject().get(key);
-        return value == null || !value.isJsonPrimitive() ? null : value.getAsString();
-    }
-
-    /**
-     * The string member under {@code key}, or {@code dflt} when absent.
+     * The string member under {@code key}, or {@code dflt} when absent or not a primitive.
      *
      * @param key the member name
      * @param dflt the default
      * @return the string value, or {@code dflt}
      */
     public @NotNull String getString(@NotNull String key, @NotNull String dflt) {
-        String value = getString(key);
-        return value != null ? value : dflt;
+        return findString(key).orElse(dflt);
     }
 
     /**
@@ -893,29 +881,6 @@ public final class JsonTree {
     public int getInt(@NotNull String key, int dflt) {
         JsonElement value = asObject().get(key);
         return value == null || !value.isJsonPrimitive() ? dflt : value.getAsInt();
-    }
-
-    /**
-     * The boolean member under {@code key}, or {@code dflt} when absent.
-     *
-     * @param key the member name
-     * @param dflt the default
-     * @return the boolean value, or {@code dflt}
-     */
-    public boolean getBool(@NotNull String key, boolean dflt) {
-        JsonElement value = asObject().get(key);
-        return value == null || !value.isJsonPrimitive() ? dflt : value.getAsBoolean();
-    }
-
-    /**
-     * The node member under {@code key}, or {@code null} when absent.
-     *
-     * @param key the member name
-     * @return the nested node, or {@code null}
-     */
-    public @Nullable JsonTree get(@NotNull String key) {
-        JsonElement value = asObject().get(key);
-        return value == null ? null : new JsonTree(value);
     }
 
     /**
@@ -990,158 +955,40 @@ public final class JsonTree {
      * @param key the member name
      * @return the boolean value, or empty
      */
-    public @NotNull Optional<Boolean> findBool(@NotNull String key) {
+    public @NotNull Optional<Boolean> findBoolean(@NotNull String key) {
         JsonElement member = memberOrNull(key);
         return member != null && member.isJsonPrimitive() && member.getAsJsonPrimitive().isBoolean()
             ? Optional.of(member.getAsBoolean()) : Optional.empty();
     }
 
     /**
-     * This primitive node as a string, present only when this is a primitive.
+     * This array node's elements, in order, empty on a non-array (skip-not-abort). Subsumes the old
+     * {@code elements()} + {@code stream()} pair.
      *
-     * @return the string value, or empty
+     * @return the element nodes
      */
-    public @NotNull Optional<String> stringValue() {
-        return this.element.isJsonPrimitive() ? Optional.of(this.element.getAsString()) : Optional.empty();
+    public @NotNull SingleStream<JsonTree> elements() {
+        return SingleStream.of(streamElements());
     }
 
     /**
-     * This primitive node as an int, present only when this is a numeric primitive.
+     * This object node's members as (key, node) pairs, in insertion order, empty on a non-object.
+     * Subsumes the old {@code members()} + {@code memberStream()} pair.
      *
-     * @return the int value, or empty
+     * @return the member pairs
      */
-    public @NotNull Optional<Integer> intValue() {
-        return isNumber(this.element) ? Optional.of(this.element.getAsInt()) : Optional.empty();
+    public @NotNull PairStream<String, JsonTree> members() {
+        return PairStream.of(streamMembers());
     }
 
     /**
-     * This primitive node as a boolean, present only when this is a boolean primitive.
+     * This object node's keys, in insertion order, empty on a non-object.
      *
-     * @return the boolean value, or empty
+     * @return the member keys
      */
-    public @NotNull Optional<Boolean> boolValue() {
-        return this.element.isJsonPrimitive() && this.element.getAsJsonPrimitive().isBoolean()
-            ? Optional.of(this.element.getAsBoolean()) : Optional.empty();
-    }
-
-    /**
-     * The array element at {@code index}, or {@code null} when this node is not an array or the
-     * index is out of range.
-     *
-     * @param index the zero-based element index
-     * @return the element node, or {@code null}
-     */
-    public @Nullable JsonTree at(int index) {
-        if (!(this.element instanceof JsonArray array) || index < 0 || index >= array.size()) return null;
-        return new JsonTree(array.get(index));
-    }
-
-    /**
-     * This primitive node as a float, or {@code dflt} when it is not a JSON number.
-     *
-     * @param dflt the default
-     * @return the float value, or {@code dflt}
-     */
-    public float floatValue(float dflt) {
-        return this.element.isJsonPrimitive() && this.element.getAsJsonPrimitive().isNumber()
-            ? this.element.getAsFloat() : dflt;
-    }
-
-    /**
-     * The int elements of the array member under {@code key}, non-numeric entries skipped; empty
-     * when the member is absent or not an array.
-     *
-     * @param key the member name
-     * @return the int values in order
-     */
-    public @NotNull List<Integer> getInts(@NotNull String key) {
-        List<Integer> out = new ArrayList<>();
-        if (memberOrNull(key) instanceof JsonArray array)
-            for (JsonElement entry : array) if (isNumber(entry)) out.add(entry.getAsInt());
-        return out;
-    }
-
-    /**
-     * The float elements of the array member under {@code key}, non-numeric entries skipped; empty
-     * when the member is absent or not an array.
-     *
-     * @param key the member name
-     * @return the float values in order
-     */
-    public @NotNull List<Float> getFloats(@NotNull String key) {
-        List<Float> out = new ArrayList<>();
-        if (memberOrNull(key) instanceof JsonArray array)
-            for (JsonElement entry : array) if (isNumber(entry)) out.add(entry.getAsFloat());
-        return out;
-    }
-
-    /**
-     * The string elements of the array member under {@code key}, non-primitive entries skipped;
-     * empty when the member is absent or not an array.
-     *
-     * @param key the member name
-     * @return the string values in order
-     */
-    public @NotNull List<String> getStrings(@NotNull String key) {
-        List<String> out = new ArrayList<>();
-        if (memberOrNull(key) instanceof JsonArray array)
-            for (JsonElement entry : array) if (entry.isJsonPrimitive()) out.add(entry.getAsString());
-        return out;
-    }
-
-    /**
-     * This array node's elements, wrapped, in order.
-     */
-    public @NotNull Iterable<JsonTree> elements() {
-        List<JsonTree> out = new ArrayList<>();
-        for (JsonElement entry : asArray()) out.add(new JsonTree(entry));
-        return out;
-    }
-
-    /**
-     * This object node's members, wrapped, in insertion order.
-     */
-    public @NotNull Iterable<Map.Entry<String, JsonTree>> members() {
-        List<Map.Entry<String, JsonTree>> out = new ArrayList<>();
-        for (Map.Entry<String, JsonElement> entry : asObject().entrySet())
-            out.add(new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), new JsonTree(entry.getValue())));
-        return out;
-    }
-
-    /**
-     * This array node's elements as a stream, empty when this node is not an array (skip-not-abort).
-     *
-     * @return the element nodes in order
-     */
-    public @NotNull Stream<JsonTree> stream() {
-        if (!(this.element instanceof JsonArray array)) return Stream.empty();
-        List<JsonTree> out = new ArrayList<>(array.size());
-        for (JsonElement entry : array) out.add(new JsonTree(entry));
-        return out.stream();
-    }
-
-    /**
-     * This object node's members as a stream, in insertion order, empty when this node is not an
-     * object (skip-not-abort).
-     *
-     * @return the member entries in insertion order
-     */
-    public @NotNull Stream<Map.Entry<String, JsonTree>> memberStream() {
-        if (!(this.element instanceof JsonObject object)) return Stream.empty();
-        List<Map.Entry<String, JsonTree>> out = new ArrayList<>();
-        for (Map.Entry<String, JsonElement> entry : object.entrySet())
-            out.add(new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), new JsonTree(entry.getValue())));
-        return out.stream();
-    }
-
-    /**
-     * This object node's keys, in insertion order, empty when this node is not an object.
-     *
-     * @return the member keys in insertion order
-     */
-    public @NotNull Stream<String> keys() {
-        if (!(this.element instanceof JsonObject object)) return Stream.empty();
-        return new ArrayList<>(object.keySet()).stream();
+    public @NotNull SingleStream<String> keys() {
+        if (!(this.element instanceof JsonObject object)) return SingleStream.empty();
+        return SingleStream.of(new ArrayList<>(object.keySet()).stream());
     }
 
     // -- read additive: predicates, wide/hex/positional find, get(index), require* --
