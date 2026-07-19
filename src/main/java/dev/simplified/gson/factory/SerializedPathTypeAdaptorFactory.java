@@ -12,6 +12,7 @@ import com.google.gson.stream.JsonWriter;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.collection.ConcurrentList;
 import dev.simplified.gson.SerializedPath;
+import dev.simplified.gson.exception.JsonException;
 import dev.simplified.reflection.Reflection;
 import dev.simplified.reflection.accessor.FieldAccessor;
 import dev.simplified.util.StringUtil;
@@ -132,8 +133,10 @@ public final class SerializedPathTypeAdaptorFactory implements TypeAdapterFactor
 
                     // Now it can be assigned to the object field...
                     fieldInfo.getAccessor().set(value, innerValue);
+                } catch (JsonException ex) {
+                    throw ex;
                 } catch (Exception ex) {
-                    throw new IOException(ex);
+                    throw new JsonException(ex, "Failed to decode @SerializedPath field '%s'", fieldInfo.getJsonPath());
                 }
             }
 

@@ -4,11 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.TypeAdapter;
 import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
-import lombok.NoArgsConstructor;
+import dev.simplified.gson.exception.JsonException;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -29,29 +27,28 @@ import java.time.format.DateTimeFormatter;
  * the global {@link Gson Gson} instance can continue using its
  * default handling for every other {@link Instant} field across the codebase
  * (epoch-millis for Hypixel API responses, ISO-8601 elsewhere).
+ * <p>
+ * Null-safe both directions and malformed-input safe (an unparseable value yields a
+ * {@link JsonException}) via {@link SafeTypeAdapter}.
  */
-@NoArgsConstructor
-public final class Rfc822InstantAdapter extends TypeAdapter<Instant> {
+public final class Rfc822InstantAdapter extends SafeTypeAdapter<Instant> {
 
     private static final @NotNull DateTimeFormatter FORMAT = DateTimeFormatter.RFC_1123_DATE_TIME;
 
-    @Override
-    public void write(@NotNull JsonWriter out, @Nullable Instant value) throws IOException {
-        if (value == null) {
-            out.nullValue();
-            return;
-        }
+    /**
+     * Constructs a new {@code Rfc822InstantAdapter}.
+     */
+    public Rfc822InstantAdapter() {
+        super("Instant (RFC-822)");
+    }
 
+    @Override
+    protected void writeValue(@NotNull JsonWriter out, @NotNull Instant value) throws IOException {
         out.value(FORMAT.format(value.atOffset(ZoneOffset.UTC)));
     }
 
     @Override
-    public @Nullable Instant read(@NotNull JsonReader in) throws IOException {
-        if (in.peek() == JsonToken.NULL) {
-            in.nextNull();
-            return null;
-        }
-
+    protected @NotNull Instant readValue(@NotNull JsonReader in) throws IOException {
         return ZonedDateTime.parse(in.nextString(), FORMAT).toInstant();
     }
 

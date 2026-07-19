@@ -1,24 +1,35 @@
 package dev.simplified.gson.adapter;
 
-import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import lombok.NoArgsConstructor;
+import dev.simplified.gson.exception.JsonException;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.time.Instant;
 
-@NoArgsConstructor
-public final class InstantTypeAdapter extends TypeAdapter<Instant> {
+/**
+ * Gson codec for {@link Instant} values serialized as epoch milliseconds.
+ *
+ * <p>Null-safe both directions and malformed-input safe (a non-numeric token yields a
+ * {@link JsonException}) via {@link SafeTypeAdapter}.
+ */
+public final class InstantTypeAdapter extends SafeTypeAdapter<Instant> {
+
+    /**
+     * Constructs a new {@code InstantTypeAdapter}.
+     */
+    public InstantTypeAdapter() {
+        super("Instant");
+    }
 
     @Override
-    public void write(@NotNull JsonWriter out, @NotNull Instant value) throws IOException {
+    protected void writeValue(@NotNull JsonWriter out, @NotNull Instant value) throws IOException {
         out.value(value.toEpochMilli());
     }
 
     @Override
-    public Instant read(@NotNull JsonReader in) throws IOException {
+    protected @NotNull Instant readValue(@NotNull JsonReader in) throws IOException {
         return Instant.ofEpochMilli(in.nextLong());
     }
 
