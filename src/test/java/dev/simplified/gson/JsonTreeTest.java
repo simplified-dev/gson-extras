@@ -123,15 +123,22 @@ class JsonTreeTest {
     }
 
     @Test
-    @DisplayName("write emits pretty JSON terminated by exactly one platform newline")
+    @DisplayName("write terminates with exactly one LF on every platform, on both arms")
     void writeNewlineContract() throws IOException {
         Path out = tempDir.resolve("nested/out.json");
         JsonTree.object().put("k", "v").write(out);
         String written = Files.readString(out, StandardCharsets.UTF_8);
-        assertTrue(written.endsWith(System.lineSeparator()), "platform newline at EOF");
+        assertTrue(written.endsWith("\n"), "LF at EOF");
         assertTrue(written.contains("\"k\": \"v\""), "pretty-printed");
-        assertEquals(written.length() - System.lineSeparator().length(),
-            written.lastIndexOf(System.lineSeparator()), "exactly one trailing newline");
+        assertEquals(written.length() - 1, written.lastIndexOf('\n'), "exactly one trailing newline");
+        // The terminator is the byte the pretty-printer already puts between lines, so the file
+        // carries no CR at all - the bytes a `text eol=lf` repository stores verbatim.
+        assertEquals(-1, written.indexOf('\r'), "no CR anywhere in the pretty form");
+
+        Path compact = tempDir.resolve("nested/compact.json");
+        JsonTree.object().put("k", "v").write(compact, false);
+        assertEquals("{\"k\":\"v\"}\n", Files.readString(compact, StandardCharsets.UTF_8),
+            "compact arm terminates with one LF too");
     }
 
     @Test
