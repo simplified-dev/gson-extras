@@ -67,6 +67,15 @@ public final class JsonTree {
      */
     public static final @NotNull Codec DEFAULT = Codec.of(GsonSettings.defaults());
 
+    /**
+     * The terminator every {@link Path} write appends, fixed at {@code \n} rather than the platform
+     * separator. Gson's own pretty-printer emits {@code \n} between lines, so a platform terminator
+     * made the last line the only one in the file that differed from the rest of it - and from the
+     * bytes a {@code text eol=lf} repository stores, which is what turned a byte-identical re-emission
+     * on Windows into a one-byte modification with an empty content diff.
+     */
+    private static final @NotNull String LINE_TERMINATOR = "\n";
+
     private final @NotNull JsonElement element;
 
     // ------------------------------------------------------------------------------------
@@ -1675,7 +1684,7 @@ public final class JsonTree {
     }
 
     /**
-     * Writes this node compact or pretty, terminated by one platform newline, parent dirs created.
+     * Writes this node compact or pretty, terminated by one {@code \n}, parent dirs created.
      *
      * @param file the output path
      * @param pretty {@code true} for the pretty on-disk form, {@code false} for compact
@@ -1689,7 +1698,7 @@ public final class JsonTree {
         try {
             Path parent = file.getParent();
             if (parent != null) Files.createDirectories(parent);
-            Files.writeString(file, DEFAULT.read.toJson(this.element) + System.lineSeparator());
+            Files.writeString(file, DEFAULT.read.toJson(this.element) + LINE_TERMINATOR);
         } catch (IOException ex) {
             throw new JsonException(ex, "Failed to write '%s'", file);
         }
@@ -1733,8 +1742,8 @@ public final class JsonTree {
 
     /**
      * Writes this node to {@code file} - THE single write path for every emitted JSON: shared PRETTY
-     * Gson (HTML escaping off) terminated with the platform line separator, parent directories
-     * created. Callers that want a wrote-log emit it themselves.
+     * Gson (HTML escaping off) terminated with {@code \n}, parent directories created. Callers that
+     * want a wrote-log emit it themselves.
      *
      * @param file the output path
      * @throws JsonException if the directory or file cannot be written
@@ -1979,7 +1988,7 @@ public final class JsonTree {
         }
 
         /**
-         * Pretty-writes a node through this codec, terminated by one platform newline; parent
+         * Pretty-writes a node through this codec, terminated by one {@code \n}; parent
          * directories are created when the path carries a parent.
          *
          * @param node the node to write
@@ -1990,7 +1999,7 @@ public final class JsonTree {
             try {
                 Path parent = file.getParent();
                 if (parent != null) Files.createDirectories(parent);
-                Files.writeString(file, this.pretty.toJson(node.element) + System.lineSeparator());
+                Files.writeString(file, this.pretty.toJson(node.element) + LINE_TERMINATOR);
             } catch (IOException ex) {
                 throw new JsonException(ex, "Failed to write '%s'", file);
             }
