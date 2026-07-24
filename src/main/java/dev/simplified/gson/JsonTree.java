@@ -1028,7 +1028,7 @@ public final class JsonTree {
     /** Whether this container has no members or elements ({@code false} for a primitive). */
     public boolean isEmpty() {
         if (this.element instanceof JsonArray array) return array.isEmpty();
-        if (this.element instanceof JsonObject object) return object.size() == 0;
+        if (this.element instanceof JsonObject object) return object.isEmpty();
         return false;
     }
 
@@ -1565,7 +1565,7 @@ public final class JsonTree {
      * @return the decoded list, present only when the member is an array
      */
     public <E> @NotNull Optional<List<E>> findList(@NotNull String key, @NotNull Class<E> type) {
-        return findArray(key).<List<E>>map(node -> node.asList(type));
+        return findArray(key).map(node -> node.asList(type));
     }
 
     /**
@@ -1602,7 +1602,7 @@ public final class JsonTree {
      * @return the decoded map, present only when the member is an object
      */
     public <V> @NotNull Optional<Map<String, V>> findMap(@NotNull String key, @NotNull Class<V> type) {
-        return findObject(key).<Map<String, V>>map(node -> node.asMap(type));
+        return findObject(key).map(node -> node.asMap(type));
     }
 
     // -- io additive: read-from-source, render-to-string, extra write sinks --
@@ -1865,13 +1865,17 @@ public final class JsonTree {
      * @return this node's type
      */
     public @NotNull JsonType type() {
-        if (this.element instanceof JsonObject) return JsonType.OBJECT;
-        if (this.element instanceof JsonArray) return JsonType.ARRAY;
-        if (this.element instanceof JsonNull) return JsonType.NULL;
-        JsonPrimitive primitive = this.element.getAsJsonPrimitive();
-        if (primitive.isString()) return JsonType.STRING;
-        if (primitive.isBoolean()) return JsonType.BOOLEAN;
-        return JsonType.NUMBER;
+        return switch (this.element) {
+            case JsonObject ignored -> JsonType.OBJECT;
+            case JsonArray ignored -> JsonType.ARRAY;
+            case JsonNull ignored -> JsonType.NULL;
+            default -> {
+                JsonPrimitive primitive = this.element.getAsJsonPrimitive();
+                if (primitive.isString()) yield JsonType.STRING;
+                if (primitive.isBoolean()) yield JsonType.BOOLEAN;
+                yield JsonType.NUMBER;
+            }
+        };
     }
 
     /**
