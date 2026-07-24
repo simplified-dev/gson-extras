@@ -27,9 +27,7 @@ import java.io.IOException;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.Collections;
 import java.util.Map;
-import java.util.WeakHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -64,7 +62,14 @@ import java.util.regex.Pattern;
 @NoArgsConstructor
 public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
-    private static final Map<Object, JsonObject> OVERFLOW = Collections.synchronizedMap(new WeakHashMap<>());
+    /**
+     * Entries a captured map could not hold, carried from the read that built the map to a
+     * later write of the same map.
+     * <p>
+     * Keyed by reference identity - the overflow belongs to one captured map, not to whatever
+     * entries it happens to hold, and a caller mutating that map afterwards must not lose it.
+     */
+    private static final WeakIdentityMap<Object, JsonObject> OVERFLOW = new WeakIdentityMap<>();
 
     /**
      * Holds a match pattern and the corresponding {@link SerializedName @SerializedName}

@@ -26,10 +26,8 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.WeakHashMap;
 
 /**
  * Gson {@link TypeAdapterFactory} that processes {@link Collapse @Collapse} annotations
@@ -58,7 +56,16 @@ import java.util.WeakHashMap;
 @NoArgsConstructor
 public final class CollapseTypeAdapterFactory implements TypeAdapterFactory {
 
-    private static final Map<Object, ConcurrentList<String>> KEY_ORDER = Collections.synchronizedMap(new WeakHashMap<>());
+    /**
+     * Original JSON key order of each deserialized list, carried from the read that produced
+     * it to a later write of the same list.
+     * <p>
+     * Keyed by reference identity - two lists holding equal values are a different pair of
+     * lists with their own key orders, and {@link CollapseTypeAdapter#injectKey} mutates the
+     * elements of a list right after it is tracked, which would move a value-keyed entry out
+     * from under the write that needs it.
+     */
+    private static final WeakIdentityMap<Object, ConcurrentList<String>> KEY_ORDER = new WeakIdentityMap<>();
 
     @Override
     public <T> @Nullable TypeAdapter<T> create(@NotNull Gson gson, @NotNull TypeToken<T> typeToken) {

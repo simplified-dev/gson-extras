@@ -30,9 +30,7 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Map;
-import java.util.WeakHashMap;
 
 /**
  * Gson {@link TypeAdapterFactory} that processes {@link Lenient @Lenient} and
@@ -51,7 +49,15 @@ import java.util.WeakHashMap;
 @NoArgsConstructor
 public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
 
-    private static final Map<Object, JsonElement> OVERFLOW = Collections.synchronizedMap(new WeakHashMap<>());
+    /**
+     * Entries filtered out of a lenient collection, carried from the read that built it to a
+     * later write of the same collection.
+     * <p>
+     * Keyed by reference identity - the overflow belongs to one collection rather than to the
+     * values it holds, so two collections that filter to equal contents keep their own, and a
+     * caller adding to one afterwards still finds its overflow.
+     */
+    private static final WeakIdentityMap<Object, JsonElement> OVERFLOW = new WeakIdentityMap<>();
 
     @Override
     public <T> @NotNull TypeAdapter<T> create(@NotNull Gson gson, @NotNull TypeToken<T> typeToken) {
@@ -97,7 +103,7 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
                                 Object collection = lenientInfo.getAccessor().get(value);
 
                                 if (collection != null) {
-                                    JsonElement overflow = OVERFLOW.computeIfAbsent(collection, k -> lenientInfo.isMap() ? new JsonObject() : new JsonArray());
+                                    JsonElement overflow = OVERFLOW.computeIfAbsent(collection, () -> lenientInfo.isMap() ? new JsonObject() : new JsonArray());
 
                                     if (overflow.isJsonObject())
                                         overflow.getAsJsonObject().add(extractInfo.getJsonKey(), this.getGson().toJsonTree(extractValue));

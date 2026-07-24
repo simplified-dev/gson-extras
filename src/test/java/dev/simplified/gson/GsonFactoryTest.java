@@ -2,6 +2,7 @@ package dev.simplified.gson;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.collection.ConcurrentList;
@@ -15,6 +16,7 @@ import dev.simplified.gson.annotation.Key;
 import dev.simplified.gson.annotation.Lenient;
 import dev.simplified.gson.annotation.SerializedPath;
 import dev.simplified.gson.annotation.Split;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.junit.jupiter.api.Nested;
@@ -1501,6 +1503,89 @@ public class GsonFactoryTest {
             assertThat(second.getBosses().get(0).getLevel(), is(5));
             assertThat(second.getBosses().get(1).getXp(), is(50.0));
             assertThat(second.getBosses().get(1).getLevel(), is(3));
+        }
+
+        enum Tier { BRONZE, SILVER }
+
+        @Getter
+        @NoArgsConstructor
+        @EqualsAndHashCode
+        static class TieredBoss {
+
+            @Key
+            private Tier tier;
+            private int level;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class TieredListModel {
+
+            @Collapse
+            @SerializedName("bosses")
+            private ConcurrentList<TieredBoss> bosses = Concurrent.newList();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        @EqualsAndHashCode
+        static class ValueBoss {
+
+            private int level;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class ValueListModel {
+
+            @Collapse
+            @SerializedName("bosses")
+            private ConcurrentList<ValueBoss> bosses = Concurrent.newList();
+
+        }
+
+        private static JsonObject collapsedBosses(String json) {
+            return JsonParser.parseString(json).getAsJsonObject().getAsJsonObject("bosses");
+        }
+
+        @Test
+        public void listCollapseKeyOrderSurvivesKeyInjection_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "bosses": {
+                        "bronze": {"level": 5},
+                        "silver": {"level": 3}
+                    }
+                }
+                """;
+
+            TieredListModel model = gson.fromJson(json, TieredListModel.class);
+
+            assertThat(model.getBosses(), hasSize(2));
+            assertThat(model.getBosses().get(0).getTier(), is(Tier.BRONZE));
+            assertThat(model.getBosses().get(1).getTier(), is(Tier.SILVER));
+
+            // Deserialization injects the @Key field into every element, which changes what
+            // the tracked list is worth by value. The original key spelling must survive that,
+            // rather than being re-derived from the injected constant as "BRONZE"/"SILVER".
+            assertThat(collapsedBosses(gson.toJson(model)).keySet(), contains("bronze", "silver"));
+        }
+
+        @Test
+        public void listCollapseKeyOrderIsPerListInstance_ok() {
+            Gson gson = GSON;
+
+            ValueListModel first = gson.fromJson("{\"bosses\":{\"alpha\":{\"level\":5}}}", ValueListModel.class);
+            ValueListModel second = gson.fromJson("{\"bosses\":{\"beta\":{\"level\":5}}}", ValueListModel.class);
+
+            // Two lists holding equal values are still two lists, each with its own key order.
+            assertThat(collapsedBosses(gson.toJson(first)).keySet(), contains("alpha"));
+            assertThat(collapsedBosses(gson.toJson(second)).keySet(), contains("beta"));
         }
 
     }
