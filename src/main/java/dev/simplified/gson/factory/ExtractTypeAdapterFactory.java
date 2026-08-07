@@ -15,6 +15,7 @@ import dev.simplified.gson.GsonSettings;
 import dev.simplified.gson.annotation.Capture;
 import dev.simplified.gson.annotation.Extract;
 import dev.simplified.gson.annotation.Lenient;
+import dev.simplified.gson.exception.JsonException;
 import dev.simplified.reflection.Reflection;
 import dev.simplified.reflection.accessor.FieldAccessor;
 import lombok.Getter;
@@ -25,7 +26,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.lang.reflect.Modifier;
+import java.util.Comparator;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Gson {@link TypeAdapterFactory} that fills {@link Extract @Extract} fields from the overflow a
@@ -102,8 +105,18 @@ public final class ExtractTypeAdapterFactory implements TypeAdapterFactory {
 
                 JsonElement overflow = Overflow.open(owner, info.getTarget(), JsonObject::new);
 
-                if (overflow.isJsonObject())
-                    overflow.getAsJsonObject().add(info.getJsonKey(), this.getGson().toJsonTree(extractValue));
+                if (!overflow.isJsonObject())
+                    continue;
+
+                JsonObject overflowObject = overflow.getAsJsonObject();
+                JsonElement tree = this.getGson().toJsonTree(extractValue);
+
+                if (!info.isRemainder())
+                    overflowObject.add(info.getJsonKey(), tree);
+                else if (tree.isJsonObject()) {
+                    for (Map.Entry<String, JsonElement> entry : tree.getAsJsonObject().entrySet())
+                        overflowObject.add(entry.getKey(), entry.getValue());
+                }
             }
 
             JsonElement jsonTree = this.getDelegateAdapter().toJsonTree(value);
@@ -140,10 +153,17 @@ public final class ExtractTypeAdapterFactory implements TypeAdapterFactory {
                 if (owner == null)
                     continue;
 
-                JsonElement claimed = Overflow.claim(owner, info.getJsonKey());
+                if (info.isRemainder()) {
+                    JsonObject claimed = Overflow.claim(owner, info::matches);
 
-                if (claimed != null)
-                    this.assign(value, info, owner, claimed);
+                    if (!claimed.isEmpty())
+                        this.assign(value, info, owner, claimed);
+                } else {
+                    JsonElement claimed = Overflow.claim(owner, info.getJsonKey());
+
+                    if (claimed != null)
+                        this.assign(value, info, owner, claimed);
+                }
             }
 
             return value;
@@ -158,7 +178,12 @@ public final class ExtractTypeAdapterFactory implements TypeAdapterFactory {
             try {
                 info.getAccessor().set(value, this.getGson().fromJson(claimed, info.getAccessor().getGenericType()));
             } catch (Exception ex) {
-                Overflow.restore(owner, info.getJsonKey(), claimed);
+                // a remainder conversion is all-or-nothing, so every claimed entry goes back
+                if (info.isRemainder() && claimed.isJsonObject()) {
+                    for (Map.Entry<String, JsonElement> entry : claimed.getAsJsonObject().entrySet())
+                        Overflow.restore(owner, entry.getKey(), entry.getValue());
+                } else
+                    Overflow.restore(owner, info.getJsonKey(), claimed);
             }
         }
 
@@ -173,9 +198,30 @@ public final class ExtractTypeAdapterFactory implements TypeAdapterFactory {
         private final @NotNull Overflow.Target target;
         private final @NotNull String serializedName;
         private final @NotNull String jsonKey;
+        private final boolean remainder;
+        private final @Nullable Pattern pattern;
 
         private boolean isMapSource() {
             return Map.class.isAssignableFrom(this.getSourceAccessor().getFieldType());
+        }
+
+        /**
+         * Whether a remainder claim takes this key. A null pattern is the catch-all, which is what
+         * makes an empty filter claim everything left.
+         */
+        private boolean matches(@NotNull String key) {
+            return this.getPattern() == null || this.getPattern().matcher(key).find();
+        }
+
+        /**
+         * Claims run most-specific first, so an exact claim and a catch-all coexist on one source
+         * whichever order they are declared in - unlike {@code @Capture}, where field order decides.
+         */
+        private int getClaimOrder() {
+            if (!this.isRemainder())
+                return 0;
+
+            return this.getPattern() != null ? 1 : 2;
         }
 
         private static @NotNull ConcurrentList<ExtractFieldInfo> of(@NotNull Class<?> clazz) {
@@ -187,17 +233,19 @@ public final class ExtractTypeAdapterFactory implements TypeAdapterFactory {
                 if (Modifier.isTransient(accessor.getModifiers()))
                     continue;
 
-                String path = accessor.getAnnotation(Extract.class)
-                    .map(Extract::value)
-                    .orElse("");
+                Extract extract = accessor.getAnnotation(Extract.class).orElse(null);
 
-                int dotIndex = path.indexOf('.');
-
-                // a dotless value carries no key to claim and has never matched anything
-                if (dotIndex < 1)
+                if (extract == null)
                     continue;
 
-                FieldAccessor<?> source = findField(reflection, path.substring(0, dotIndex));
+                String path = extract.value();
+                int dotIndex = path.indexOf('.');
+                boolean remainder = dotIndex < 1;
+
+                if (!remainder && !extract.filter().isEmpty())
+                    throw new JsonException("@Extract on '%s.%s' names a single key, so filter() must be empty", clazz.getSimpleName(), accessor.getName());
+
+                FieldAccessor<?> source = findField(reflection, remainder ? path : path.substring(0, dotIndex));
 
                 if (source == null)
                     continue;
@@ -207,16 +255,36 @@ public final class ExtractTypeAdapterFactory implements TypeAdapterFactory {
                 if (target == null)
                     continue;
 
+                Pattern pattern = extract.filter().isEmpty() ? null : Pattern.compile(extract.filter());
+
+                if (remainder && pattern == null)
+                    rejectSecondCatchAll(clazz, result, source, accessor);
+
                 result.add(new ExtractFieldInfo(
                     accessor,
                     source,
                     target,
                     accessor.getAnnotation(SerializedName.class).map(SerializedName::value).orElse(accessor.getName()),
-                    path.substring(dotIndex + 1)
+                    remainder ? "" : path.substring(dotIndex + 1),
+                    remainder,
+                    pattern
                 ));
             }
 
+            result.sort(Comparator.comparingInt(ExtractFieldInfo::getClaimOrder));
             return result;
+        }
+
+        /**
+         * Two catch-all remainders on one source is detectable and silently lossy - the second finds
+         * nothing left - so it is rejected. Two overlapping filtered remainders is not detectable and
+         * is a documented hazard instead.
+         */
+        private static void rejectSecondCatchAll(@NotNull Class<?> clazz, @NotNull ConcurrentList<ExtractFieldInfo> resolved, @NotNull FieldAccessor<?> source, @NotNull FieldAccessor<?> accessor) {
+            for (ExtractFieldInfo existing : resolved) {
+                if (existing.getClaimOrder() == 2 && existing.getSourceAccessor().getName().equals(source.getName()))
+                    throw new JsonException("@Extract on '%s.%s' is a second catch-all remainder over '%s', which '%s' already claims", clazz.getSimpleName(), accessor.getName(), source.getName(), existing.getAccessor().getName());
+            }
         }
 
         /**

@@ -17,6 +17,7 @@ import dev.simplified.gson.annotation.Key;
 import dev.simplified.gson.annotation.Lenient;
 import dev.simplified.gson.annotation.SerializedPath;
 import dev.simplified.gson.annotation.Split;
+import dev.simplified.gson.exception.JsonException;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -1771,6 +1772,352 @@ public class GsonFactoryTest {
             JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
 
             assertThat(result.getAsJsonObject("kills").get("last_killed_mob").getAsString(), is("mutated"));
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class RemainderModel {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> rewards = Concurrent.newMap();
+            @Extract("rewards")
+            private ConcurrentMap<String, String> items = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FilteredRemainderModel {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> rewards = Concurrent.newMap();
+            @Extract(value = "rewards", filter = "^quest_")
+            private ConcurrentMap<String, String> quests = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class BandedRemainderModel {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> rewards = Concurrent.newMap();
+            // declared catch-all FIRST, so a green result proves the band sort ran
+            @Extract("rewards")
+            private ConcurrentMap<String, String> rest = Concurrent.newMap();
+            @Extract("rewards.named")
+            private String named;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class BandedRemainderMirrorModel {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> rewards = Concurrent.newMap();
+            // the same pair as BandedRemainderModel with the two @Extract fields swapped. One of
+            // the two must see the unfavourable reflection order, so the pair catches a missing
+            // band sort whichever order the JVM hands the fields back in
+            @Extract("rewards.named")
+            private String named;
+            @Extract("rewards")
+            private ConcurrentMap<String, String> rest = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class CaptureRemainderModel {
+
+            @Capture(filter = "^tier_")
+            private ConcurrentMap<String, Integer> tiers = Concurrent.newMap();
+            @Extract("tiers")
+            private ConcurrentMap<String, String> unknownTiers = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class ArrayRemainderModel {
+
+            @Lenient
+            private ConcurrentList<Integer> journals = Concurrent.newList();
+            @Extract("journals")
+            private ConcurrentMap<String, String> extras = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class RemainderConversionFailureModel {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> rewards = Concurrent.newMap();
+            @Extract("rewards")
+            private ConcurrentMap<String, Integer> items = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FilterOnDottedValueModel {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> rewards = Concurrent.newMap();
+            @Extract(value = "rewards.named", filter = "^quest_")
+            private String named;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class TwoCatchAllsModel {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> rewards = Concurrent.newMap();
+            @Extract("rewards")
+            private ConcurrentMap<String, String> first = Concurrent.newMap();
+            @Extract("rewards")
+            private ConcurrentMap<String, String> second = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void extractRemainderFromLenientSource_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "rewards": {
+                        "coins": 500,
+                        "quest_a": "KADA_LEAD",
+                        "quest_b": "MATRIARCH_CHUNK"
+                    }
+                }
+                """;
+
+            RemainderModel model = gson.fromJson(json, RemainderModel.class);
+
+            // the integer half binds, the string half is claimed whole out of the overflow
+            assertThat(model.getRewards(), aMapWithSize(1));
+            assertThat(model.getRewards(), hasEntry("coins", 500));
+            assertThat(model.getItems(), aMapWithSize(2));
+            assertThat(model.getItems(), hasEntry("quest_a", "KADA_LEAD"));
+            assertThat(model.getItems(), hasEntry("quest_b", "MATRIARCH_CHUNK"));
+        }
+
+        @Test
+        public void extractRemainderKeysAreNotStripped_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "rewards": {
+                        "coins": 500,
+                        "quest_a": "KADA_LEAD"
+                    }
+                }
+                """;
+
+            FilteredRemainderModel model = gson.fromJson(json, FilteredRemainderModel.class);
+
+            // selection without stripping - the claimed key keeps the spelling the wire gave it
+            assertThat(model.getQuests(), aMapWithSize(1));
+            assertThat(model.getQuests(), hasKey("quest_a"));
+            assertThat(model.getQuests(), not(hasKey("a")));
+        }
+
+        @Test
+        public void extractFilteredRemainder_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "rewards": {
+                        "coins": 500,
+                        "quest_a": "KADA_LEAD",
+                        "other": "LEFT_BEHIND"
+                    }
+                }
+                """;
+
+            FilteredRemainderModel model = gson.fromJson(json, FilteredRemainderModel.class);
+
+            // find(), not matches() - the same semantics @Capture uses
+            assertThat(model.getQuests(), aMapWithSize(1));
+            assertThat(model.getQuests(), hasEntry("quest_a", "KADA_LEAD"));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+            JsonObject rewards = result.getAsJsonObject("rewards");
+
+            // the unclaimed entry stays in the source's overflow and merges back with the claim
+            assertThat(rewards.keySet(), containsInAnyOrder("coins", "quest_a", "other"));
+            assertThat(rewards.get("other").getAsString(), is("LEFT_BEHIND"));
+            assertThat(result.has("quests"), is(false));
+        }
+
+        @Test
+        public void extractSingleKeyAndRemainderCoexist_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "rewards": {
+                        "coins": 500,
+                        "named": "TAKEN_BY_KEY",
+                        "other": "TAKEN_BY_REMAINDER"
+                    }
+                }
+                """;
+
+            BandedRemainderModel model = gson.fromJson(json, BandedRemainderModel.class);
+
+            // the exact claim runs first even though the catch-all is declared first
+            assertThat(model.getNamed(), is("TAKEN_BY_KEY"));
+            assertThat(model.getRest(), aMapWithSize(1));
+            assertThat(model.getRest(), hasEntry("other", "TAKEN_BY_REMAINDER"));
+            assertThat(model.getRest(), not(hasKey("named")));
+
+            // and the same again with the two fields declared the other way round. Claiming is
+            // destructive, so without the band sort whichever of the two sees the unfavourable
+            // reflection order lets the catch-all swallow the named key first
+            BandedRemainderMirrorModel mirror = gson.fromJson(json, BandedRemainderMirrorModel.class);
+
+            assertThat(mirror.getNamed(), is("TAKEN_BY_KEY"));
+            assertThat(mirror.getRest(), aMapWithSize(1));
+            assertThat(mirror.getRest(), hasEntry("other", "TAKEN_BY_REMAINDER"));
+            assertThat(mirror.getRest(), not(hasKey("named")));
+        }
+
+        @Test
+        public void extractRemainderRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "rewards": {
+                        "coins": 500,
+                        "quest_a": "KADA_LEAD",
+                        "quest_b": "MATRIARCH_CHUNK"
+                    }
+                }
+                """;
+
+            RemainderModel first = gson.fromJson(json, RemainderModel.class);
+            JsonObject result = gson.fromJson(gson.toJson(first), JsonObject.class);
+
+            // every claimed entry goes back into the SOURCE's own sub-object, not the root
+            assertThat(result.keySet(), contains("rewards"));
+            assertThat(result.getAsJsonObject("rewards").keySet(), containsInAnyOrder("coins", "quest_a", "quest_b"));
+
+            RemainderModel second = gson.fromJson(result, RemainderModel.class);
+
+            assertThat(second.getRewards(), is(first.getRewards()));
+            assertThat(second.getItems(), is(first.getItems()));
+        }
+
+        @Test
+        public void extractRemainderFromCaptureSource_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "tier_one": 1,
+                    "tier_broken": "not_an_int",
+                    "tier_also_broken": "nor_this"
+                }
+                """;
+
+            CaptureRemainderModel model = gson.fromJson(json, CaptureRemainderModel.class);
+
+            assertThat(model.getTiers(), aMapWithSize(1));
+            assertThat(model.getTiers(), hasEntry("one", 1));
+            // @Capture stores overflow under the ORIGINAL unstripped key, and the claim does not
+            // normalise that - which is why no prefix is re-applied on the way back
+            assertThat(model.getUnknownTiers(), aMapWithSize(2));
+            assertThat(model.getUnknownTiers(), hasEntry("tier_broken", "not_an_int"));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // the SOURCE_OBJECT target sends them back to the root, not into a sub-object
+            assertThat(result.keySet(), containsInAnyOrder("tier_one", "tier_broken", "tier_also_broken"));
+            assertThat(result.get("tier_broken").getAsString(), is("not_an_int"));
+        }
+
+        @Test
+        public void extractRemainderConversionFailureRestoresAll_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "rewards": {
+                        "coins": 500,
+                        "quest_a": "not_an_int",
+                        "quest_b": "nor_this"
+                    }
+                }
+                """;
+
+            RemainderConversionFailureModel model = gson.fromJson(json, RemainderConversionFailureModel.class);
+
+            // conversion is all-or-nothing: the field keeps its initialiser rather than holding a
+            // partial map, because a partial map with no signal is worse than an empty one
+            assertThat(model.getItems(), anEmptyMap());
+
+            // and every claimed entry goes back, so the document is intact
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonObject("rewards").keySet(), containsInAnyOrder("coins", "quest_a", "quest_b"));
+            assertThat(result.getAsJsonObject("rewards").get("quest_a").getAsString(), is("not_an_int"));
+        }
+
+        @Test
+        public void extractRemainderOverArrayOverflow_isNoOp() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "journals": [1, 2, "the_watcher"]
+                }
+                """;
+
+            ArrayRemainderModel model = gson.fromJson(json, ArrayRemainderModel.class);
+
+            // a collection-shaped source has no key space for a filter, so the claim finds nothing
+            // and the overflowed element stays where it was
+            assertThat(model.getJournals(), contains(1, 2));
+            assertThat(model.getExtras(), anEmptyMap());
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonArray("journals").size(), is(3));
+            assertThat(result.getAsJsonArray("journals").get(2).getAsString(), is("the_watcher"));
+
+            // and the companion field keeps its own root key, unlike a claiming @Extract. Nothing
+            // can re-inject into an array-shaped overflow, so dropping the key would delete
+            // whatever the field held with nowhere to put it
+            assertThat(result.has("extras"), is(true));
+        }
+
+        @Test
+        public void extractFilterOnDottedValue_throws() {
+            Gson gson = GSON;
+
+            JsonException thrown = assertThrows(JsonException.class,
+                () -> gson.fromJson("{}", FilterOnDottedValueModel.class));
+
+            assertThat(thrown.getMessage(), containsString("filter() must be empty"));
+        }
+
+        @Test
+        public void extractTwoCatchAllRemaindersOnOneSource_throws() {
+            Gson gson = GSON;
+
+            JsonException thrown = assertThrows(JsonException.class,
+                () -> gson.fromJson("{}", TwoCatchAllsModel.class));
+
+            assertThat(thrown.getMessage(), containsString("second catch-all remainder"));
         }
 
         @Test

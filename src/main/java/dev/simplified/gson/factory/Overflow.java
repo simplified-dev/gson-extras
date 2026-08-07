@@ -1,6 +1,8 @@
 package dev.simplified.gson.factory;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import dev.simplified.collection.Concurrent;
 import dev.simplified.gson.annotation.Capture;
 import dev.simplified.gson.annotation.Extract;
 import dev.simplified.gson.annotation.Lenient;
@@ -9,6 +11,7 @@ import lombok.NoArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -116,6 +119,32 @@ final class Overflow {
             return null;
 
         return entry.element().getAsJsonObject().remove(key);
+    }
+
+    /**
+     * Removes and returns every overflowed entry whose key the given filter accepts.
+     *
+     * @param owner the container to claim from
+     * @param filter decides which keys to claim
+     * @return the claimed entries under their original keys, empty when nothing matched
+     */
+    static @NotNull JsonObject claim(@NotNull Object owner, @NotNull Predicate<String> filter) {
+        JsonObject claimed = new JsonObject();
+        Entry entry = ENTRIES.get(owner);
+
+        if (entry == null || !entry.element().isJsonObject())
+            return claimed;
+
+        JsonObject overflow = entry.element().getAsJsonObject();
+
+        // snapshot the keys before removing - iterating entrySet while removing from the same
+        // JsonObject is a ConcurrentModificationException
+        for (String key : Concurrent.newList(overflow.keySet())) {
+            if (filter.test(key))
+                claimed.add(key, overflow.remove(key));
+        }
+
+        return claimed;
     }
 
     /**

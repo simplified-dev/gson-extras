@@ -6,6 +6,7 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
@@ -14,7 +15,7 @@ import java.util.function.Supplier;
  * that object stays reachable, without keeping it reachable.
  * <p>
  * Entries are matched by reference identity rather than by {@link Object#equals}, which is
- * what a per-instance side channel needs and what {@link java.util.WeakHashMap} does not
+ * what a per-instance side channel needs and what {@link WeakHashMap} does not
  * give. Two distinct objects that happen to compare equal keep separate entries, and
  * mutating a stored key cannot orphan its own entry by changing the key's hash.
  * <p>
