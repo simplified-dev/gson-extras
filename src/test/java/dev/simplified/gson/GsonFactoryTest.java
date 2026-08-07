@@ -1274,12 +1274,6 @@ public class GsonFactoryTest {
         }
 
         @Test
-        @Disabled("""
-            Currently red - "Expected: not map containing [null->ANYTHING] but: was \
-            <{FORCE=100, null=2}>". An enum key matching no constant converts to null rather than \
-            throwing, so it is judged compatible and every unmatched key in the field binds onto \
-            the same null with last-write-wins: BRAND_NEW's 4 is overwritten by ANOTHER_NEW's 2. \
-            Enable once an unmatched enum key is diverted to overflow instead.""")
         public void unmatchedEnumKeyDoesNotCollapse_ok() {
             Gson gson = GSON;
 
@@ -1303,6 +1297,244 @@ public class GsonFactoryTest {
             assertThat(result.keySet(), containsInAnyOrder("dojo_points_FORCE", "dojo_points_BRAND_NEW", "dojo_points_ANOTHER_NEW"));
             assertThat(result.get("dojo_points_BRAND_NEW").getAsInt(), is(4));
             assertThat(result.get("dojo_points_ANOTHER_NEW").getAsInt(), is(2));
+        }
+
+    }
+
+    // ──── CaptureTypeAdapterFactory - unmatched keys ────
+
+    @Nested
+    class CaptureUnmatchedKeyTests {
+
+        @Getter
+        @NoArgsConstructor
+        static class TierCatchAllModel {
+
+            @Capture
+            private ConcurrentMap<CaptureTests.DojoType, Integer> tiers = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class UnknownTierCompanionModel {
+
+            @Capture
+            private ConcurrentMap<CaptureTests.DojoType, Integer> tiers = Concurrent.newMap();
+            @Extract("tiers")
+            private ConcurrentMap<String, Integer> unknownTiers = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class IntegerKeyCaptureModel {
+
+            @Capture(filter = "^slot_")
+            private ConcurrentMap<Integer, Integer> slots = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void unmatchedEnumKeyDivertsToOverflow_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "FORCE": 1,
+                    "brand_new_tier": 4,
+                    "another_new_tier": 2
+                }
+                """;
+
+            TierCatchAllModel model = gson.fromJson(json, TierCatchAllModel.class);
+
+            assertThat(model.getTiers(), aMapWithSize(1));
+            assertThat(model.getTiers(), hasEntry(CaptureTests.DojoType.FORCE, 1));
+            assertThat(model.getTiers(), not(hasKey(nullValue(CaptureTests.DojoType.class))));
+        }
+
+        @Test
+        public void unmatchedEnumKeyRoundTrips_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "FORCE": 1,
+                    "brand_new_tier": 4,
+                    "another_new_tier": 2
+                }
+                """;
+
+            TierCatchAllModel model = gson.fromJson(json, TierCatchAllModel.class);
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // the diverted entries come back under their ORIGINAL unstripped keys
+            assertThat(result.keySet(), containsInAnyOrder("FORCE", "brand_new_tier", "another_new_tier"));
+            assertThat(result.get("brand_new_tier").getAsInt(), is(4));
+            assertThat(result.get("another_new_tier").getAsInt(), is(2));
+        }
+
+        @Test
+        public void unmatchedEnumKeyIsClaimableByExtract_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "FORCE": 1,
+                    "brand_new_tier": 4,
+                    "another_new_tier": 2
+                }
+                """;
+
+            UnknownTierCompanionModel model = gson.fromJson(json, UnknownTierCompanionModel.class);
+
+            // the companion's key type is String by definition - these are the keys no constant
+            // matched, and an enum-keyed remainder would reproduce the defect one level up
+            assertThat(model.getTiers(), aMapWithSize(1));
+            assertThat(model.getUnknownTiers(), aMapWithSize(2));
+            assertThat(model.getUnknownTiers(), hasEntry("brand_new_tier", 4));
+            assertThat(model.getUnknownTiers(), hasEntry("another_new_tier", 2));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // and the companion field costs the document nothing
+            assertThat(result.keySet(), containsInAnyOrder("FORCE", "brand_new_tier", "another_new_tier"));
+            assertThat(result.has("unknownTiers"), is(false));
+        }
+
+        @Test
+        public void matchedEnumKeysUnchanged_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "dojo_points_FORCE": 100,
+                    "dojo_points_STAMINA": 200,
+                    "dojo_points_MASTERY": 300
+                }
+                """;
+
+            CaptureTests.EnumKeyCaptureModel model = gson.fromJson(json, CaptureTests.EnumKeyCaptureModel.class);
+
+            assertThat(model.getPoints(), aMapWithSize(3));
+            assertThat(model.getPoints(), hasEntry(CaptureTests.DojoType.FORCE, 100));
+            assertThat(model.getPoints(), hasEntry(CaptureTests.DojoType.MASTERY, 300));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.keySet(), containsInAnyOrder("dojo_points_FORCE", "dojo_points_STAMINA", "dojo_points_MASTERY"));
+        }
+
+        @Test
+        public void integerKeyDiversionUnchanged_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "slot_1": 10,
+                    "slot_nope": 20
+                }
+                """;
+
+            IntegerKeyCaptureModel model = gson.fromJson(json, IntegerKeyCaptureModel.class);
+
+            // an Integer key THROWS on a non-numeric string, so these sites already diverted -
+            // the added null check must not change their path
+            assertThat(model.getSlots(), aMapWithSize(1));
+            assertThat(model.getSlots(), hasEntry(1, 10));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.keySet(), containsInAnyOrder("slot_1", "slot_nope"));
+            assertThat(result.get("slot_nope").getAsInt(), is(20));
+        }
+
+        @Test
+        public void unmatchedGroupKeyDivertsToOverflow_ok() {
+            Gson gson = GSON;
+
+            // grouping mode skips the compatibility check entirely, so an unusable key is only
+            // discovered after the entries have been split apart into a synthesized group
+            String json = """
+                {
+                    "BLOBFISH": 5767,
+                    "BLOBFISH_bronze": 4044,
+                    "brand_new_fish": 81,
+                    "brand_new_fish_diamond": 5
+                }
+                """;
+
+            CaptureTests.BareEntryEnumKeyModel model = gson.fromJson(json, CaptureTests.BareEntryEnumKeyModel.class);
+
+            assertThat(model.getFish(), aMapWithSize(1));
+            assertThat(model.getFish(), hasKey(CaptureTests.TrophyFish.BLOBFISH));
+            assertThat(model.getFish(), not(hasKey(nullValue(CaptureTests.TrophyFish.class))));
+        }
+
+        @Test
+        public void unmatchedGroupKeyPublishesOverflow_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "BLOBFISH": 5767,
+                    "BLOBFISH_bronze": 4044,
+                    "brand_new_fish": 81,
+                    "brand_new_fish_diamond": 5
+                }
+                """;
+
+            CaptureTests.BareEntryEnumKeyModel model = gson.fromJson(json, CaptureTests.BareEntryEnumKeyModel.class);
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // every entry that fed the diverted group comes back, byte-exact. Without the overflow
+            // fetch moving above the build call there would be nothing to publish.
+            // The matched group re-emits every field of the value class, defaults included, which
+            // is existing grouping-mode write behaviour - so assert the diverted keys, not the set
+            assertThat(result.get("brand_new_fish").getAsInt(), is(81));
+            assertThat(result.get("brand_new_fish_diamond").getAsInt(), is(5));
+            assertThat(result.get("BLOBFISH").getAsInt(), is(5767));
+            assertThat(result.get("BLOBFISH_bronze").getAsInt(), is(4044));
+            assertThat(result.keySet(), not(hasItem(containsString("null"))));
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FilteredEnumGroupingModel {
+
+            @Capture(filter = "^fish_")
+            private ConcurrentMap<CaptureTests.TrophyFish, CaptureTests.BareEntryTierData> fish = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void unmatchedGroupKeyWithFilterReconstructsPrefix_ok() {
+            Gson gson = GSON;
+
+            // a filtered grouping field strips its prefix on the way in, so the divert has to put
+            // the literal prefix back or the diverted key does not round-trip
+            String json = """
+                {
+                    "fish_BLOBFISH": 5767,
+                    "fish_BLOBFISH_bronze": 4044,
+                    "fish_unknown_thing": 12,
+                    "fish_unknown_thing_gold": 3
+                }
+                """;
+
+            FilteredEnumGroupingModel model = gson.fromJson(json, FilteredEnumGroupingModel.class);
+
+            assertThat(model.getFish(), aMapWithSize(1));
+            assertThat(model.getFish(), hasKey(CaptureTests.TrophyFish.BLOBFISH));
+            assertThat(model.getFish().get(CaptureTests.TrophyFish.BLOBFISH).getTotal(), is(5767));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // literalPrefix put back in front of the stripped key
+            assertThat(result.get("fish_unknown_thing").getAsInt(), is(12));
+            assertThat(result.get("fish_unknown_thing_gold").getAsInt(), is(3));
+            assertThat(result.keySet(), not(hasItem(containsString("null"))));
         }
 
     }

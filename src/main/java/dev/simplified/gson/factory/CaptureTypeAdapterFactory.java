@@ -362,10 +362,13 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             // Post-assign captured maps
             for (CaptureFieldInfo info : this.getCaptureFields()) {
                 JsonObject capturedJson = capturedJsonMaps.get(info.getFieldName());
+                // fetched BEFORE the build so a grouping-mode divert has somewhere to go and the
+                // publish gate below sees what it diverted
+                JsonObject overflow = overflowMaps.get(info.getFieldName());
                 Map<Object, Object> capturedMap;
 
                 if (info.isGroupingMode())
-                    capturedMap = buildGroupedMap(capturedJson, info);
+                    capturedMap = buildGroupedMap(capturedJson, info, overflow);
                 else
                     capturedMap = buildSimpleMap(capturedJson, info);
 
@@ -373,8 +376,6 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
                 // Store overflow, only when non-empty - unlike @Lenient, which publishes
                 // unconditionally. Unifying either way changes behaviour a consumer can observe.
-                JsonObject overflow = overflowMaps.get(info.getFieldName());
-
                 if (!overflow.isEmpty())
                     Overflow.publish(capturedMap, Overflow.Target.SOURCE_OBJECT, overflow);
             }
@@ -397,11 +398,15 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             return map;
         }
 
-        private @NotNull Map<Object, Object> buildGroupedMap(@NotNull JsonObject json, @NotNull CaptureFieldInfo info) {
+        private @NotNull Map<Object, Object> buildGroupedMap(@NotNull JsonObject json, @NotNull CaptureFieldInfo info, @NotNull JsonObject overflow) {
             Map<Object, Object> map = info.newMapInstance();
 
             // Group entries by matching suffixes against value class field names
             ConcurrentMap<String, JsonObject> groups = Concurrent.newMap();
+            // The entries each group was built from, under their filtered keys. Grouping splits an
+            // entry apart before anything can judge its key, so a group that turns out unusable can
+            // only be put back from what fed it.
+            ConcurrentMap<String, JsonObject> groupSources = Concurrent.newMap();
 
             for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
                 String strippedKey = entry.getKey();
@@ -416,6 +421,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                             groups.put(groupKey, new JsonObject());
 
                         groups.get(groupKey).add(suffix.serializedKey(), entry.getValue());
+                        recordGroupSource(groupSources, groupKey, strippedKey, entry.getValue());
                         matched = true;
                         break;
                     }
@@ -431,6 +437,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                                 groups.put(groupKey, new JsonObject());
 
                             groups.get(groupKey).add(prefix.serializedKey(), entry.getValue());
+                            recordGroupSource(groupSources, groupKey, strippedKey, entry.getValue());
                             matched = true;
                             break;
                         }
@@ -445,6 +452,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                             groups.put(groupKey, new JsonObject());
 
                         groups.get(groupKey).add("", entry.getValue());
+                        recordGroupSource(groupSources, groupKey, strippedKey, entry.getValue());
                     } else if (entry.getValue().isJsonObject()) {
                         // key -> complete object: there are no affixes to split, the value
                         // already is the instance. Merging rather than replacing lets a base
@@ -456,6 +464,8 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
                         for (Map.Entry<String, JsonElement> field : entry.getValue().getAsJsonObject().entrySet())
                             group.add(field.getKey(), field.getValue());
+
+                        recordGroupSource(groupSources, strippedKey, strippedKey, entry.getValue());
                     }
                 }
             }
@@ -464,13 +474,45 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             for (Map.Entry<String, JsonObject> group : groups.entrySet()) {
                 try {
                     Object key = this.getGson().fromJson(new JsonPrimitive(group.getKey()), info.getKeyType());
-                    Object value = this.getGson().fromJson(group.getValue(), info.getValueType());
-                    map.put(key, value);
+
+                    // grouping mode never reaches the compatibility check, so an unusable key is
+                    // only discovered here - divert rather than collapsing onto null
+                    if (key == null) {
+                        divertGroup(overflow, groupSources.get(group.getKey()), info);
+                        continue;
+                    }
+
+                    map.put(key, this.getGson().fromJson(group.getValue(), info.getValueType()));
                 } catch (Exception ex) {
+                    divertGroup(overflow, groupSources.get(group.getKey()), info);
                 }
             }
 
             return map;
+        }
+
+        /**
+         * Remembers one contributing entry under the group it fed, so the group can be put back
+         * verbatim if it turns out to be unusable.
+         */
+        private static void recordGroupSource(@NotNull ConcurrentMap<String, JsonObject> groupSources, @NotNull String groupKey, @NotNull String strippedKey, @NotNull JsonElement value) {
+            if (!groupSources.containsKey(groupKey))
+                groupSources.put(groupKey, new JsonObject());
+
+            groupSources.get(groupKey).add(strippedKey, value);
+        }
+
+        /**
+         * Moves every JSON entry that fed one group into the field's overflow, under the key the
+         * document carried - the filtered key with the filter's literal prefix put back, which is
+         * the same reconstruction the write path already performs on captured keys.
+         */
+        private static void divertGroup(@NotNull JsonObject overflow, @Nullable JsonObject source, @NotNull CaptureFieldInfo info) {
+            if (source == null)
+                return;
+
+            for (Map.Entry<String, JsonElement> entry : source.entrySet())
+                overflow.add(info.getLiteralPrefix() + entry.getKey(), entry.getValue());
         }
 
         private boolean isCompatibleCaptureEntry(@NotNull String key, @NotNull JsonElement value, @NotNull CaptureFieldInfo info) {
@@ -480,7 +522,13 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
                 if (rawKeyType != String.class) {
                     try {
-                        this.getGson().fromJson(new JsonPrimitive(key), info.getKeyType());
+                        // compatible only if the conversion neither throws NOR yields null. An enum
+                        // key matching no constant returns null without throwing, so asking only
+                        // "did it throw" judges it compatible and every unmatched key in the field
+                        // then binds onto the same null with last-write-wins. This brings the key
+                        // check into line with the value check below, which already tests for null
+                        if (this.getGson().fromJson(new JsonPrimitive(key), info.getKeyType()) == null)
+                            return false;
                     } catch (Exception ex) {
                         return false;
                     }

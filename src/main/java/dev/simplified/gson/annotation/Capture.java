@@ -29,10 +29,18 @@ import java.util.Map;
  * All captured entries are type-filtered by the map's declared key and value types.
  * Incompatible entries are stored as overflow for round-trip fidelity.
  * <p>
+ * An entry whose <b>key</b> cannot be converted to the map's key type is diverted to overflow under
+ * the key the document carried, rather than being bound. That matters most for an enum key, because
+ * a name matching no constant converts to {@code null} without throwing - so without the diversion
+ * every unmatched key in one field would collapse onto the same {@code null} entry and all but the
+ * last value would be lost. Diverted entries round-trip, and a companion {@link Extract @Extract}
+ * field can read them under their original keys.
+ * <p>
  * When the map's value type is a class with fields (not a primitive, String, or enum),
  * the factory enters <b>class-value grouping mode</b>: entries are auto-grouped by
  * matching their key affixes against the value class's field serialized names, then
- * each group is deserialized as an instance of that class.
+ * each group is deserialized as an instance of that class. A group whose key or value cannot be
+ * converted is diverted whole, putting back every entry that fed it.
  * <p>
  * Affix direction is controlled by the value class field's
  * {@link SerializedName @SerializedName}:
