@@ -22,6 +22,7 @@ import dev.simplified.gson.factory.CaptureTypeAdapterFactory;
 import dev.simplified.gson.factory.CaseInsensitiveEnumTypeAdapterFactory;
 import dev.simplified.gson.factory.CollapseTypeAdapterFactory;
 import dev.simplified.gson.factory.ExtractTypeAdapterFactory;
+import dev.simplified.gson.factory.FlattenTypeAdapterFactory;
 import dev.simplified.gson.factory.LenientTypeAdapterFactory;
 import dev.simplified.gson.factory.OptionalTypeAdapterFactory;
 import dev.simplified.gson.factory.PostInitTypeAdapterFactory;
@@ -215,12 +216,16 @@ public class GsonSettings {
      *       the outermost wrapper is registered last):
      *       {@link CaseInsensitiveEnumTypeAdapterFactory}, {@link OptionalTypeAdapterFactory},
      *       {@link SplitTypeAdapterFactory}, {@link SerializedPathTypeAdaptorFactory},
-     *       {@link LenientTypeAdapterFactory}, {@link CaptureTypeAdapterFactory},
-     *       {@link ExtractTypeAdapterFactory}, {@link CollapseTypeAdapterFactory},
-     *       {@link PostInitTypeAdapterFactory}. {@code ExtractTypeAdapterFactory} must stay
-     *       after {@code CaptureTypeAdapterFactory} so it nests outside it - both overflow
-     *       producers publish during the delegate call, and a claim made from inside
-     *       {@code @Capture} would run before the container it needs exists</li>
+     *       {@link LenientTypeAdapterFactory}, {@link FlattenTypeAdapterFactory},
+     *       {@link CaptureTypeAdapterFactory}, {@link ExtractTypeAdapterFactory},
+     *       {@link CollapseTypeAdapterFactory}, {@link PostInitTypeAdapterFactory}.
+     *       {@code ExtractTypeAdapterFactory} must stay after {@code CaptureTypeAdapterFactory}
+     *       so it nests outside it - both overflow producers publish during the delegate call,
+     *       and a claim made from inside {@code @Capture} would run before the container it
+     *       needs exists. {@code FlattenTypeAdapterFactory} must stay after
+     *       {@code LenientTypeAdapterFactory} for the mirror reason: inside it, {@code @Lenient}
+     *       would see the uncollapsed wrappers, judge every one incompatible with the declared
+     *       value type and divert the whole field to overflow before the collapse ran</li>
      *   <li><b>SPI factories</b> - every {@link TypeAdapterFactory} discovered on the
      *       classpath via {@link ServiceLoader#load(Class)
      *       ServiceLoader.load(TypeAdapterFactory.class)}. The collections module
@@ -256,6 +261,7 @@ public class GsonSettings {
                 new SplitTypeAdapterFactory(),
                 new SerializedPathTypeAdaptorFactory(),
                 new LenientTypeAdapterFactory(),
+                new FlattenTypeAdapterFactory(),
                 new CaptureTypeAdapterFactory(),
                 new ExtractTypeAdapterFactory(),
                 new CollapseTypeAdapterFactory(),

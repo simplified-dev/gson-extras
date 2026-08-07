@@ -117,6 +117,7 @@ class GsonSettingsPrewarmTest {
             "SplitTypeAdapterFactory",
             "SerializedPathTypeAdaptorFactory",
             "LenientTypeAdapterFactory",
+            "FlattenTypeAdapterFactory",
             "CaptureTypeAdapterFactory",
             "ExtractTypeAdapterFactory",
             "CollapseTypeAdapterFactory",
@@ -185,6 +186,20 @@ class GsonSettingsPrewarmTest {
                 is(greaterThan(names.indexOf("CaptureTypeAdapterFactory"))));
             assertThat(names.indexOf("ExtractTypeAdapterFactory"),
                 is(lessThan(names.indexOf("PostInitTypeAdapterFactory"))));
+        }
+
+        @Test
+        @DisplayName("Flatten sits between Lenient and Capture, so Lenient never sees a wrapper")
+        void flattenNestsOutsideLenient_ok() {
+            List<String> names = registeredFactoryNames();
+
+            // inside Lenient, @Lenient would judge every uncollapsed wrapper incompatible with the
+            // declared value type and divert the whole field to overflow before the collapse ran
+            assertThat(names, hasItems("LenientTypeAdapterFactory", "FlattenTypeAdapterFactory", "CaptureTypeAdapterFactory"));
+            assertThat(names.indexOf("FlattenTypeAdapterFactory"),
+                is(greaterThan(names.indexOf("LenientTypeAdapterFactory"))));
+            assertThat(names.indexOf("FlattenTypeAdapterFactory"),
+                is(lessThan(names.indexOf("CaptureTypeAdapterFactory"))));
         }
 
     }

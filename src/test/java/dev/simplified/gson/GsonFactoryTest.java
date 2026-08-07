@@ -14,6 +14,7 @@ import dev.simplified.gson.annotation.Capture;
 import dev.simplified.gson.annotation.Collapse;
 import dev.simplified.gson.annotation.Extract;
 import dev.simplified.gson.annotation.Fallback;
+import dev.simplified.gson.annotation.Flatten;
 import dev.simplified.gson.annotation.Key;
 import dev.simplified.gson.annotation.Lenient;
 import dev.simplified.gson.annotation.SerializedPath;
@@ -1298,6 +1299,305 @@ public class GsonFactoryTest {
             assertThat(result.keySet(), containsInAnyOrder("dojo_points_FORCE", "dojo_points_BRAND_NEW", "dojo_points_ANOTHER_NEW"));
             assertThat(result.get("dojo_points_BRAND_NEW").getAsInt(), is(4));
             assertThat(result.get("dojo_points_ANOTHER_NEW").getAsInt(), is(2));
+        }
+
+    }
+
+    // ──── FlattenTypeAdapterFactory ────
+
+    @Nested
+    class FlattenTests {
+
+        @Getter
+        @NoArgsConstructor
+        static class EssenceModel {
+
+            @Flatten("current")
+            private ConcurrentMap<String, Integer> essence = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class TagListModel {
+
+            @Flatten("id")
+            @SerializedName("tag_list")
+            private ConcurrentList<String> tags = Concurrent.newList();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FlattenSiblingCaptureModel {
+
+            @Flatten("current")
+            private ConcurrentMap<String, Integer> essence = Concurrent.newMap();
+            @Capture(filter = "^bonus_")
+            private ConcurrentMap<String, Integer> bonuses = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FlattenInsideCaptureValueModel {
+
+            @Capture(grouping = Capture.Grouping.ENTRY)
+            private ConcurrentMap<String, EssenceModel> nodes = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class NotACollectionModel {
+
+            @Flatten("current")
+            private String essence = "";
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FlattenWithCaptureModel {
+
+            @Flatten("current")
+            @Capture
+            private ConcurrentMap<String, Integer> essence = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FlattenWithLenientModel {
+
+            @Flatten("current")
+            @Lenient
+            private ConcurrentMap<String, Integer> essence = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class FlattenWithSerializedPathModel {
+
+            @Flatten("current")
+            @SerializedPath("a.b")
+            private ConcurrentMap<String, Integer> essence = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class EmptyMemberModel {
+
+            @Flatten("")
+            private ConcurrentMap<String, Integer> essence = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void flattenMap_read() {
+            Gson gson = GSON;
+
+            EssenceModel model = gson.fromJson("""
+                {
+                    "essence": {
+                        "WITHER": { "current": 1955 },
+                        "SPIDER": { "current": 42 }
+                    }
+                }
+                """, EssenceModel.class);
+
+            assertThat(model.getEssence(), aMapWithSize(2));
+            assertThat(model.getEssence(), hasEntry("WITHER", 1955));
+            assertThat(model.getEssence(), hasEntry("SPIDER", 42));
+        }
+
+        @Test
+        public void flattenCollection_read() {
+            Gson gson = GSON;
+
+            // the JsonArray branch, which has no adoption site anywhere
+            TagListModel model = gson.fromJson("""
+                {
+                    "tag_list": [ { "id": "alpha" }, { "id": "beta" } ]
+                }
+                """, TagListModel.class);
+
+            assertThat(model.getTags(), contains("alpha", "beta"));
+        }
+
+        @Test
+        public void flattenMap_roundTrip() {
+            Gson gson = GSON;
+
+            EssenceModel model = gson.fromJson("""
+                {
+                    "essence": {
+                        "WITHER": { "current": 1955 }
+                    }
+                }
+                """, EssenceModel.class);
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonObject("essence").getAsJsonObject("WITHER").get("current").getAsInt(), is(1955));
+            assertThat(result.getAsJsonObject("essence").getAsJsonObject("WITHER").keySet(), contains("current"));
+        }
+
+        @Test
+        public void flattenCollection_roundTrip() {
+            Gson gson = GSON;
+
+            TagListModel model = gson.fromJson("{ \"tag_list\": [ { \"id\": \"alpha\" } ] }", TagListModel.class);
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonArray("tag_list").size(), is(1));
+            assertThat(result.getAsJsonArray("tag_list").get(0).getAsJsonObject().get("id").getAsString(), is("alpha"));
+        }
+
+        @Test
+        public void flattenMultiMemberWrapper_roundTrip() {
+            Gson gson = GSON;
+
+            // pins the declared loss as a CONTRACT rather than leaving it to be discovered: the
+            // collapse is a projection and the field's declared type has no room for the sibling
+            EssenceModel model = gson.fromJson("""
+                {
+                    "essence": {
+                        "WITHER": { "current": 1955, "total": 3000 }
+                    }
+                }
+                """, EssenceModel.class);
+
+            assertThat(model.getEssence(), hasEntry("WITHER", 1955));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonObject("essence").getAsJsonObject("WITHER").keySet(), contains("current"));
+            assertThat(result.getAsJsonObject("essence").getAsJsonObject("WITHER").has("total"), is(false));
+        }
+
+        @Test
+        public void flattenAlreadyCollapsed_read() {
+            Gson gson = GSON;
+
+            // an entry that arrived collapsed is left alone, so a half-wrapped document reads and
+            // then normalises to fully wrapped on write
+            EssenceModel model = gson.fromJson("""
+                {
+                    "essence": {
+                        "WITHER": { "current": 1955 },
+                        "SPIDER": 42
+                    }
+                }
+                """, EssenceModel.class);
+
+            assertThat(model.getEssence(), hasEntry("WITHER", 1955));
+            assertThat(model.getEssence(), hasEntry("SPIDER", 42));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonObject("essence").getAsJsonObject("SPIDER").get("current").getAsInt(), is(42));
+        }
+
+        @Test
+        public void flattenMissingMember_throws() {
+            Gson gson = GSON;
+
+            // the wrapper is left as-is and fails in the delegate, rather than binding a null
+            assertThrows(JsonSyntaxException.class, () -> gson.fromJson("""
+                {
+                    "essence": {
+                        "WITHER": { "total": 3000 }
+                    }
+                }
+                """, EssenceModel.class));
+        }
+
+        @Test
+        public void flattenIdleType_returnsNull() {
+            Gson gson = GSON;
+
+            // a type carrying no @Flatten field must not be wrapped, or this factory would change
+            // which factory a third factory's getDelegateAdapter resolves to
+            assertThat(gson.getAdapter(PostInitTests.PlainModel.class).getClass().getName(),
+                not(containsString("Flatten")));
+        }
+
+        @Test
+        public void flattenSiblingCapture_ok() {
+            Gson gson = GSON;
+
+            // a @Flatten field's key is a KNOWN key, so @Capture copies it verbatim into the
+            // delegate's object and never claims it
+            FlattenSiblingCaptureModel model = gson.fromJson("""
+                {
+                    "essence": { "WITHER": { "current": 1955 } },
+                    "bonus_a": 7
+                }
+                """, FlattenSiblingCaptureModel.class);
+
+            assertThat(model.getEssence(), hasEntry("WITHER", 1955));
+            assertThat(model.getBonuses(), hasEntry("a", 7));
+        }
+
+        @Test
+        public void flattenInsideCaptureValue_ok() {
+            Gson gson = GSON;
+
+            // a @Capture map's value is deserialized with a fresh top-of-chain lookup, so the
+            // value class's own @Flatten runs in its own adapter stack
+            FlattenInsideCaptureValueModel model = gson.fromJson("""
+                {
+                    "alpha": { "essence": { "WITHER": { "current": 1955 } } }
+                }
+                """, FlattenInsideCaptureValueModel.class);
+
+            assertThat(model.getNodes(), aMapWithSize(1));
+            assertThat(model.getNodes().get("alpha").getEssence(), hasEntry("WITHER", 1955));
+        }
+
+        @Test
+        public void flattenOnNonCollection_throws() {
+            Gson gson = GSON;
+
+            assertThat(assertThrows(JsonException.class, () -> gson.fromJson("{}", NotACollectionModel.class)).getMessage(),
+                containsString("neither a Map nor a Collection"));
+        }
+
+        @Test
+        public void flattenWithCapture_throws() {
+            Gson gson = GSON;
+
+            assertThat(assertThrows(JsonException.class, () -> gson.fromJson("{}", FlattenWithCaptureModel.class)).getMessage(),
+                containsString("both @Flatten and @Capture"));
+        }
+
+        @Test
+        public void flattenWithLenient_throws() {
+            Gson gson = GSON;
+
+            // the pair corrupts the round trip in BOTH registration orders, so it is closed rather
+            // than resolved by a move - which is why there is no escape hatch for a missing wrapper
+            assertThat(assertThrows(JsonException.class, () -> gson.fromJson("{}", FlattenWithLenientModel.class)).getMessage(),
+                containsString("both @Flatten and @Lenient"));
+        }
+
+        @Test
+        public void flattenWithSerializedPath_throws() {
+            Gson gson = GSON;
+
+            assertThat(assertThrows(JsonException.class, () -> gson.fromJson("{}", FlattenWithSerializedPathModel.class)).getMessage(),
+                containsString("both @Flatten and @SerializedPath"));
+        }
+
+        @Test
+        public void flattenEmptyMember_throws() {
+            Gson gson = GSON;
+
+            assertThat(assertThrows(JsonException.class, () -> gson.fromJson("{}", EmptyMemberModel.class)).getMessage(),
+                containsString("empty member name"));
         }
 
     }
