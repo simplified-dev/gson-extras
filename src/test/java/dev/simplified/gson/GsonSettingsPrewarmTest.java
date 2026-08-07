@@ -10,13 +10,17 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThan;
 
 class GsonSettingsPrewarmTest {
 
@@ -101,6 +105,70 @@ class GsonSettingsPrewarmTest {
             // Multiple resolves; the utility must not throw under any condition.
             GsonSettings.prewarm(gson, List.of(Payload.class, String.class, Integer.class));
         }
+    }
+
+    @Nested
+    @DisplayName("GsonSettings.defaults() factory registration order")
+    class DefaultFactoryOrder {
+
+        private static final List<String> BUILT_INS = List.of(
+            "CaseInsensitiveEnumTypeAdapterFactory",
+            "OptionalTypeAdapterFactory",
+            "SplitTypeAdapterFactory",
+            "SerializedPathTypeAdaptorFactory",
+            "LenientTypeAdapterFactory",
+            "CaptureTypeAdapterFactory",
+            "CollapseTypeAdapterFactory",
+            "PostInitTypeAdapterFactory"
+        );
+
+        private static List<String> registeredFactoryNames() {
+            List<String> names = new ArrayList<>();
+
+            for (TypeAdapterFactory factory : GsonSettings.defaults().getFactories())
+                names.add(factory.getClass().getSimpleName());
+
+            return names;
+        }
+
+        @Test
+        @DisplayName("The built-in factory prefix is exact and ordered")
+        void defaultFactoryOrderIsStable_ok() {
+            List<String> names = registeredFactoryNames();
+
+            // Registration order runs OPPOSITE to nesting depth - GsonBuilder.create() reverses the
+            // user factory list, so the LAST registered factory is the OUTERMOST wrapper. Inserting
+            // a factory shifts every later index and no other test asserts this list.
+            // The assertion is on the PREFIX rather than the whole list: defaults() appends every
+            // SPI TypeAdapterFactory found on the runtime classpath after the built-ins, so an
+            // exact whole-list assertion would go red for a classpath change that has nothing to do
+            // with the registration order this test exists to protect.
+            assertThat(names.size(), is(greaterThanOrEqualTo(BUILT_INS.size())));
+            assertThat(names.subList(0, BUILT_INS.size()), is(equalTo(BUILT_INS)));
+        }
+
+        @Test
+        @DisplayName("SPI-discovered factories are appended after every built-in")
+        void spiFactoriesAreAppendedLast_ok() {
+            List<String> names = registeredFactoryNames();
+
+            // an SPI factory landing between two built-ins would silently change nesting depth
+            for (String builtIn : BUILT_INS)
+                assertThat(names.indexOf(builtIn), is(lessThan(BUILT_INS.size())));
+        }
+
+        @Test
+        @DisplayName("Capture is registered after Lenient, so Capture nests outside it")
+        void captureNestsOutsideLenient_ok() {
+            List<String> names = registeredFactoryNames();
+
+            // assert presence FIRST - indexOf returns -1 for a missing entry, so a bare
+            // greaterThan comparison passes when either factory is not registered at all
+            assertThat(names, hasItems("LenientTypeAdapterFactory", "CaptureTypeAdapterFactory"));
+            assertThat(names.indexOf("CaptureTypeAdapterFactory"),
+                is(greaterThan(names.indexOf("LenientTypeAdapterFactory"))));
+        }
+
     }
 
     /**

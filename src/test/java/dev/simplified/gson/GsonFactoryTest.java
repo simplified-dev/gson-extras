@@ -3,6 +3,7 @@ package dev.simplified.gson;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.annotations.SerializedName;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.collection.ConcurrentList;
@@ -19,6 +20,8 @@ import dev.simplified.gson.annotation.Split;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +29,7 @@ import java.util.Optional;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class GsonFactoryTest {
 
@@ -1209,6 +1213,599 @@ public class GsonFactoryTest {
             assertThat(second.getNodes().get("core").isEnabled(), is(true));
         }
 
+        @Getter
+        @NoArgsConstructor
+        static class EnumValueCaptureModel {
+
+            @Capture
+            private ConcurrentMap<String, DojoType> favourites = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void captureOverflowMergesBackOnWrite_ok() {
+            Gson gson = GSON;
+
+            // the typeFilteredCapture_ok input, serialized rather than only read
+            String json = """
+                {
+                    "name": "TypeFilter",
+                    "level": 1,
+                    "valid": 42,
+                    "invalid": "not_an_int"
+                }
+                """;
+
+            SimpleCaptureModel model = gson.fromJson(json, SimpleCaptureModel.class);
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // the captured entry and the overflowed entry both merge back at the ROOT
+            assertThat(result.get("valid").getAsInt(), is(42));
+            assertThat(result.get("invalid").getAsString(), is("not_an_int"));
+            // @Capture removes its own field's serialized key from the output
+            assertThat(result.has("data"), is(false));
+            assertThat(result.keySet(), containsInAnyOrder("name", "level", "valid", "invalid"));
+        }
+
+        @Test
+        public void enumValuedOverflowIsLossless_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "primary": "FORCE",
+                    "secondary": "NOT_A_DOJO_TYPE"
+                }
+                """;
+
+            EnumValueCaptureModel model = gson.fromJson(json, EnumValueCaptureModel.class);
+
+            // an unrecognized enum VALUE is judged incompatible and diverted to overflow
+            assertThat(model.getFavourites(), aMapWithSize(1));
+            assertThat(model.getFavourites(), hasEntry("primary", DojoType.FORCE));
+            assertThat(model.getFavourites(), not(hasKey("secondary")));
+
+            // and it round-trips out of overflow byte-exact
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+            assertThat(result.keySet(), containsInAnyOrder("primary", "secondary"));
+            assertThat(result.get("primary").getAsString(), is("FORCE"));
+            assertThat(result.get("secondary").getAsString(), is("NOT_A_DOJO_TYPE"));
+        }
+
+        @Test
+        @Disabled("""
+            Currently red - "Expected: not map containing [null->ANYTHING] but: was \
+            <{FORCE=100, null=2}>". An enum key matching no constant converts to null rather than \
+            throwing, so it is judged compatible and every unmatched key in the field binds onto \
+            the same null with last-write-wins: BRAND_NEW's 4 is overwritten by ANOTHER_NEW's 2. \
+            Enable once an unmatched enum key is diverted to overflow instead.""")
+        public void unmatchedEnumKeyDoesNotCollapse_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "dojo_points_FORCE": 100,
+                    "dojo_points_BRAND_NEW": 4,
+                    "dojo_points_ANOTHER_NEW": 2
+                }
+                """;
+
+            EnumKeyCaptureModel model = gson.fromJson(json, EnumKeyCaptureModel.class);
+
+            // the loss is N-1 values per field, not one odd key
+            assertThat(model.getPoints(), not(hasKey(nullValue(DojoType.class))));
+            assertThat(model.getPoints(), aMapWithSize(1));
+            assertThat(model.getPoints(), hasEntry(DojoType.FORCE, 100));
+
+            // both unmatched keys survive under their original unstripped spelling
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+            assertThat(result.keySet(), containsInAnyOrder("dojo_points_FORCE", "dojo_points_BRAND_NEW", "dojo_points_ANOTHER_NEW"));
+            assertThat(result.get("dojo_points_BRAND_NEW").getAsInt(), is(4));
+            assertThat(result.get("dojo_points_ANOTHER_NEW").getAsInt(), is(2));
+        }
+
+    }
+
+    // ──── LenientTypeAdapterFactory - @Lenient ────
+
+    @Nested
+    class LenientTests {
+
+        @Getter
+        @NoArgsConstructor
+        static class LenientStatsModel {
+
+            private String name;
+            @Lenient
+            private ConcurrentMap<String, Integer> stats = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class LenientJournalModel {
+
+            @Lenient
+            private ConcurrentList<Integer> journals = Concurrent.newList();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class LenientPathModel {
+
+            @Lenient
+            @SerializedPath("dungeon_journal.unlocked_journals")
+            private ConcurrentList<Integer> journals = Concurrent.newList();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class CaptureWinsModel {
+
+            private String name;
+            @Lenient
+            @Capture
+            private ConcurrentMap<String, Integer> data = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void lenientOverflowMergesBackOnWrite_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Player",
+                    "stats": {
+                        "health": 100,
+                        "last_update": "2024-01-01"
+                    }
+                }
+                """;
+
+            LenientStatsModel model = gson.fromJson(json, LenientStatsModel.class);
+
+            assertThat(model.getStats(), aMapWithSize(1));
+            assertThat(model.getStats(), hasEntry("health", 100));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+            JsonObject stats = result.getAsJsonObject("stats");
+
+            // the overflowed entry returns to the field's OWN sub-object, never to the root
+            assertThat(stats.keySet(), containsInAnyOrder("health", "last_update"));
+            assertThat(stats.get("last_update").getAsString(), is("2024-01-01"));
+            assertThat(result.has("last_update"), is(false));
+            assertThat(result.keySet(), containsInAnyOrder("name", "stats"));
+        }
+
+        @Test
+        public void lenientCollectionOverflowMergesBackOnWrite_ok() {
+            Gson gson = GSON;
+
+            // the JsonArray half of the factory - one adoption site in the whole workspace
+            String json = """
+                {
+                    "journals": [1, 2, "expedition_volume_3"]
+                }
+                """;
+
+            LenientJournalModel model = gson.fromJson(json, LenientJournalModel.class);
+
+            assertThat(model.getJournals(), contains(1, 2));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonArray("journals").size(), is(3));
+            assertThat(result.getAsJsonArray("journals").get(2).getAsString(), is("expedition_volume_3"));
+        }
+
+        @Test
+        public void serializedPathLenientSourceRoundTrip_ok() {
+            Gson gson = GSON;
+
+            // merge-back resolves through locateElement's segment branch, not root.get
+            String json = """
+                {
+                    "dungeon_journal": {
+                        "unlocked_journals": [1, "the_watcher"]
+                    }
+                }
+                """;
+
+            LenientPathModel model = gson.fromJson(json, LenientPathModel.class);
+
+            assertThat(model.getJournals(), contains(1));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.has("journals"), is(false));
+            assertThat(result.getAsJsonObject("dungeon_journal").getAsJsonArray("unlocked_journals").size(), is(2));
+            assertThat(result.getAsJsonObject("dungeon_journal").getAsJsonArray("unlocked_journals").get(1).getAsString(), is("the_watcher"));
+        }
+
+        @Test
+        public void lenientFieldWithNoOverflowRoundTripsExactly_ok() {
+            Gson gson = GSON;
+
+            // Deliberately NOT named for the publish asymmetry. @Lenient publishes its overflow
+            // unconditionally and @Capture only when non-empty, but an empty published overflow
+            // and an absent one produce the same output - the merge loop either skips on null or
+            // iterates zero entries. Adopting @Capture's policy here was applied as a mutation and
+            // the whole suite stayed green, so the asymmetry has no executable guard and this test
+            // does not pretend to be one. What it pins is the no-overflow output shape.
+            String json = """
+                {
+                    "name": "Clean",
+                    "stats": {
+                        "health": 100,
+                        "defense": 50
+                    }
+                }
+                """;
+
+            LenientStatsModel model = gson.fromJson(json, LenientStatsModel.class);
+
+            assertThat(model.getStats(), aMapWithSize(2));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonObject("stats").keySet(), containsInAnyOrder("health", "defense"));
+            assertThat(result.keySet(), containsInAnyOrder("name", "stats"));
+        }
+
+        @Test
+        public void lenientNonObjectRootPassesThrough_ok() {
+            Gson gson = GSON;
+
+            // A JSON null is the discriminating input: it short-circuits to the delegate and binds
+            // to null. Dropping the short-circuit throws on getAsJsonObject instead, and an array
+            // root alone cannot tell the two apart because gson rewraps both as JsonSyntaxException
+            assertThat(gson.fromJson("null", LenientStatsModel.class), is(nullValue()));
+            assertThrows(JsonSyntaxException.class, () -> gson.fromJson("[1, 2]", LenientStatsModel.class));
+        }
+
+        @Test
+        public void lenientFieldShapeMismatchIsUnfiltered_ok() {
+            Gson gson = GSON;
+
+            // map field against array JSON matches neither filter branch, so the field stays in the
+            // tree and is handed raw to the delegate - which means the failure has to come from the
+            // delegate's own read. Asserting only the exception type would also accept a throw from
+            // inside the filter phase
+            JsonSyntaxException thrown = assertThrows(JsonSyntaxException.class, () -> gson.fromJson("""
+                {
+                    "name": "Mismatch",
+                    "stats": [1, 2]
+                }
+                """, LenientStatsModel.class));
+
+            assertThat(thrown.getMessage(), containsString("BEGIN_ARRAY"));
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class LenientEnumValueModel {
+
+            @Lenient
+            private ConcurrentMap<String, CaptureTests.DojoType> favourites = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void lenientEnumValuedOverflowIsLossless_ok() {
+            Gson gson = GSON;
+
+            // the enum-VALUE branch of isCompatibleElement, which judges a value no constant
+            // matches incompatible and diverts it. It is the @Lenient twin of the @Capture guard,
+            // and no other model reaches it - this is its only coverage anywhere
+            String json = """
+                {
+                    "favourites": {
+                        "primary": "FORCE",
+                        "secondary": "NOT_A_DOJO_TYPE"
+                    }
+                }
+                """;
+
+            LenientEnumValueModel model = gson.fromJson(json, LenientEnumValueModel.class);
+
+            assertThat(model.getFavourites(), aMapWithSize(1));
+            assertThat(model.getFavourites(), hasEntry("primary", CaptureTests.DojoType.FORCE));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+            JsonObject favourites = result.getAsJsonObject("favourites");
+
+            assertThat(favourites.keySet(), containsInAnyOrder("primary", "secondary"));
+            assertThat(favourites.get("secondary").getAsString(), is("NOT_A_DOJO_TYPE"));
+            assertThat(result.keySet(), contains("favourites"));
+        }
+
+        @Test
+        public void captureClaimsFieldCarryingBothAnnotations_ok() {
+            Gson gson = GSON;
+
+            // Deliberately NOT named for the @Lenient skip at LenientFieldInfo.of. Removing that
+            // skip was applied as a mutation and this test stayed green: @Capture is the outer
+            // adapter and strips every unknown key, so a @Lenient view of a @Capture field can
+            // never be handed its own key and the skip has no observable consequence. What this
+            // pins is that the field binds off the ROOT as a capture, not as a lenient sub-object
+            String json = """
+                {
+                    "name": "Both",
+                    "alpha": 1,
+                    "beta": "not_an_int"
+                }
+                """;
+
+            CaptureWinsModel model = gson.fromJson(json, CaptureWinsModel.class);
+
+            assertThat(model.getData(), aMapWithSize(1));
+            assertThat(model.getData(), hasEntry("alpha", 1));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.has("data"), is(false));
+            assertThat(result.get("alpha").getAsInt(), is(1));
+            assertThat(result.get("beta").getAsString(), is("not_an_int"));
+        }
+
+    }
+
+    // ──── LenientTypeAdapterFactory - @Extract ────
+
+    @Nested
+    class ExtractTests {
+
+        @Getter
+        @NoArgsConstructor
+        static class ExtractModel {
+
+            private String id;
+            @Lenient
+            private ConcurrentMap<String, Integer> kills = Concurrent.newMap();
+            @Setter
+            @Extract("kills.last_killed_mob")
+            private String lastKilledMob;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class ExtractMistypedModel {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> kills = Concurrent.newMap();
+            @Extract("kills.last_killed_mob")
+            private Integer lastKilledMob = 42;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class TwoExtractModel {
+
+            @Lenient
+            @SerializedName("armor")
+            private ConcurrentMap<Integer, Integer> armorSets = Concurrent.newMap();
+            @Extract("armorSets.equipped_set")
+            private Optional<Integer> equippedArmorSet = Optional.empty();
+
+            @Lenient
+            @SerializedName("equipment")
+            private ConcurrentMap<Integer, Integer> equipmentSets = Concurrent.newMap();
+            @Extract("equipmentSets.equipped_set")
+            private Optional<Integer> equippedEquipmentSet = Optional.empty();
+
+            @Lenient
+            @SerializedName("loadouts")
+            private ConcurrentMap<Integer, Integer> loadouts = Concurrent.newMap();
+
+        }
+
+        private static final String TWO_EXTRACT_JSON = """
+            {
+                "armor": { "1": 11, "equipped_set": 2 },
+                "equipment": { "1": 21, "equipped_set": 4 },
+                "loadouts": { "1": 31 }
+            }
+            """;
+
+        @Test
+        public void extractReinjectsOnWrite_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "id": "player1",
+                    "kills": {
+                        "zombie_1": 5,
+                        "last_killed_mob": "ashfang"
+                    },
+                    "stat_health": 100
+                }
+                """;
+
+            CombinationTests.FullCombinationModel model = gson.fromJson(json, CombinationTests.FullCombinationModel.class);
+
+            // observe the claim, not only the output - without this line the plain @Lenient merge
+            // loop would put an UNCLAIMED entry back under kills with the same value and the
+            // output assertions below would pass with the whole extract phase deleted
+            assertThat(model.getLastKilledMob(), is("ashfang"));
+            assertThat(model.getKills(), not(hasKey("last_killed_mob")));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // the claimed entry returns to the source field's own sub-object
+            assertThat(result.getAsJsonObject("kills").get("last_killed_mob").getAsString(), is("ashfang"));
+            assertThat(result.getAsJsonObject("kills").get("zombie_1").getAsInt(), is(5));
+        }
+
+        @Test
+        @Disabled("""
+            Currently red - "Expected: iterable with items ["id", "kills", "stat_health"] in \
+            any order but: not matched: "lastKilledMob"". @Extract never removes its own field's \
+            serialized key from the output, so every site emits its extracted value twice - once \
+            inside the source and once at the root under the Java field name, a key no input \
+            document carries. Enable once @Extract removes its own key on write.""")
+        public void extractFieldIsNotEmittedAtRoot_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "id": "player1",
+                    "kills": {
+                        "zombie_1": 5,
+                        "last_killed_mob": "ashfang"
+                    },
+                    "stat_health": 100
+                }
+                """;
+
+            CombinationTests.FullCombinationModel model = gson.fromJson(json, CombinationTests.FullCombinationModel.class);
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.keySet(), containsInAnyOrder("id", "kills", "stat_health"));
+            assertThat(result.has("lastKilledMob"), is(false));
+        }
+
+        @Test
+        public void lenientExtractRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "id": "player1",
+                    "kills": {
+                        "zombie_1": 5,
+                        "spider_2": 3,
+                        "last_killed_mob": "ashfang"
+                    },
+                    "stat_health": 100,
+                    "stat_defense": 50
+                }
+                """;
+
+            CombinationTests.FullCombinationModel first = gson.fromJson(json, CombinationTests.FullCombinationModel.class);
+            JsonObject serialized = gson.fromJson(gson.toJson(first), JsonObject.class);
+
+            // The output currently carries the extracted value TWICE - inside kills and again at
+            // the root under the Java field name, which is a @Capture known key and therefore binds
+            // reflectively. Strip the duplicate so the second read can only reach the value through
+            // the @Extract claim; once the duplicate is gone this removal is a no-op
+            serialized.remove("lastKilledMob");
+
+            CombinationTests.FullCombinationModel second = gson.fromJson(serialized, CombinationTests.FullCombinationModel.class);
+
+            assertThat(second.getId(), is(first.getId()));
+            assertThat(second.getKills(), is(first.getKills()));
+            assertThat(second.getLastKilledMob(), is(first.getLastKilledMob()));
+            assertThat(second.getLastKilledMob(), is("ashfang"));
+            assertThat(second.getStats(), is(first.getStats()));
+        }
+
+        @Test
+        public void twoExtractsReturnToOwnSources_ok() {
+            Gson gson = GSON;
+
+            TwoExtractModel model = gson.fromJson(TWO_EXTRACT_JSON, TwoExtractModel.class);
+
+            // both keys reach overflow because the KEY fails Integer conversion, and the source
+            // is resolved by Java field name - never by @SerializedName
+            assertThat(model.getEquippedArmorSet().orElseThrow(), is(2));
+            assertThat(model.getEquippedEquipmentSet().orElseThrow(), is(4));
+            assertThat(model.getArmorSets(), aMapWithSize(1));
+            assertThat(model.getArmorSets(), hasEntry(1, 11));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // each claim returns to its own source's sub-object, and the third @Lenient field
+            // carrying no @Extract is left untouched
+            assertThat(result.getAsJsonObject("armor").get("equipped_set").getAsInt(), is(2));
+            assertThat(result.getAsJsonObject("equipment").get("equipped_set").getAsInt(), is(4));
+            assertThat(result.getAsJsonObject("armor").has("equipped_set"), is(true));
+            assertThat(result.getAsJsonObject("equipment").keySet(), containsInAnyOrder("1", "equipped_set"));
+            assertThat(result.getAsJsonObject("loadouts").keySet(), contains("1"));
+        }
+
+        @Test
+        @Disabled("""
+            Currently red - "Expected: iterable with items ["armor", "equipment", "loadouts"] \
+            in any order but: not matched: "equippedArmorSet"". Both @Extract fields emit their \
+            value a second time at the root under the Java field name. \
+            Enable once @Extract removes its own key on write.""")
+        public void twoExtractsNotEmittedAtRoot_ok() {
+            Gson gson = GSON;
+
+            TwoExtractModel model = gson.fromJson(TWO_EXTRACT_JSON, TwoExtractModel.class);
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.keySet(), containsInAnyOrder("armor", "equipment", "loadouts"));
+            assertThat(result.has("equippedArmorSet"), is(false));
+            assertThat(result.has("equippedEquipmentSet"), is(false));
+        }
+
+        @Test
+        public void extractOnHandBuiltObjectReachesDocument_ok() {
+            Gson gson = GSON;
+
+            // the object was never read, so nothing published an overflow for its kills map -
+            // the write path installs one as a side effect and the entry still reaches the document
+            ExtractModel model = new ExtractModel();
+            model.setLastKilledMob("phantom");
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonObject("kills").get("last_killed_mob").getAsString(), is("phantom"));
+        }
+
+        @Test
+        public void extractMutationReachesDocument_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "id": "player1",
+                    "kills": {
+                        "zombie_1": 5,
+                        "last_killed_mob": "ashfang"
+                    }
+                }
+                """;
+
+            ExtractModel model = gson.fromJson(json, ExtractModel.class);
+            assertThat(model.getLastKilledMob(), is("ashfang"));
+
+            model.setLastKilledMob("mutated");
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonObject("kills").get("last_killed_mob").getAsString(), is("mutated"));
+        }
+
+        @Test
+        public void extractConversionFailureLeavesInitialiser_ok() {
+            Gson gson = GSON;
+
+            // the conversion throws and is swallowed, so the field keeps its initialiser and
+            // no consumer sees an exception - six live sites rely on this
+            String json = """
+                {
+                    "kills": {
+                        "zombie_1": 5,
+                        "last_killed_mob": "ashfang"
+                    }
+                }
+                """;
+
+            ExtractMistypedModel model = gson.fromJson(json, ExtractMistypedModel.class);
+
+            assertThat(model.getLastKilledMob(), is(42));
+            assertThat(model.getKills(), aMapWithSize(1));
+            assertThat(model.getKills(), hasEntry("zombie_1", 5));
+        }
+
     }
 
     // ──── CollapseTypeAdapterFactory ────
@@ -2250,6 +2847,44 @@ public class GsonFactoryTest {
             assertThat(model.getStats(), aMapWithSize(2));
             assertThat(model.getStats(), hasEntry("health", 100));
             assertThat(model.getStats(), hasEntry("defense", 50));
+        }
+
+        @Test
+        public void lenientAndCaptureOverflowGoToDifferentTargets_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Player",
+                    "stats": {
+                        "health": 100,
+                        "last_update": "2024-01-01"
+                    },
+                    "bonus_health": 10,
+                    "bonus_broken": "not_an_int"
+                }
+                """;
+
+            LenientWithCaptureModel model = gson.fromJson(json, LenientWithCaptureModel.class);
+
+            assertThat(model.getStats(), aMapWithSize(1));
+            assertThat(model.getStats(), hasEntry("health", 100));
+            assertThat(model.getBonuses(), aMapWithSize(1));
+            assertThat(model.getBonuses(), hasEntry("health", 10));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // the @Lenient entry merges back into the field's own sub-object
+            assertThat(result.getAsJsonObject("stats").get("last_update").getAsString(), is("2024-01-01"));
+            // the @Capture entry merges back at the ROOT, under its original unstripped key
+            assertThat(result.get("bonus_broken").getAsString(), is("not_an_int"));
+            assertThat(result.get("bonus_health").getAsInt(), is(10));
+
+            // and neither lands in the other's target
+            assertThat(result.has("last_update"), is(false));
+            assertThat(result.getAsJsonObject("stats").has("bonus_broken"), is(false));
+            assertThat(result.has("bonuses"), is(false));
+            assertThat(result.keySet(), containsInAnyOrder("name", "stats", "bonus_health", "bonus_broken"));
         }
 
     }

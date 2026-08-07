@@ -1,6 +1,8 @@
 package dev.simplified.gson.factory;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.collection.ConcurrentList;
@@ -85,6 +87,30 @@ public class CollectionValueCompatibilityTest {
 
         assertThat(toolkit.getTools().keySet(), contains("SUGAR_CANE"));
         assertThat(toolkit.getTools().get("SUGAR_CANE").getFirst().getId(), is("cane"));
+    }
+
+    @Test
+    public void lenientCollectionMapOverflowMergesBackOnWrite_ok() {
+        // the write half of the case above - the two filtered entries must come back, and they
+        // must come back inside the field's own sub-object rather than at the root
+        LenientToolkit toolkit = GSON.fromJson("""
+            {
+              "tools": {
+                "IS_UNLOCKED": true,
+                "IN_USE": { "SUGAR_CANE": { "0": false } },
+                "SUGAR_CANE": [ { "id": "cane" } ]
+              }
+            }
+            """, LenientToolkit.class);
+
+        JsonObject result = JsonParser.parseString(GSON.toJson(toolkit)).getAsJsonObject();
+        JsonObject tools = result.getAsJsonObject("tools");
+
+        assertThat(result.keySet(), contains("tools"));
+        assertThat(tools.keySet(), containsInAnyOrder("SUGAR_CANE", "IS_UNLOCKED", "IN_USE"));
+        assertThat(tools.get("IS_UNLOCKED").getAsBoolean(), is(true));
+        assertThat(tools.getAsJsonObject("IN_USE").getAsJsonObject("SUGAR_CANE").get("0").getAsBoolean(), is(false));
+        assertThat(tools.getAsJsonArray("SUGAR_CANE").size(), is(1));
     }
 
     @Getter
