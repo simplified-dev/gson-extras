@@ -21,6 +21,7 @@ import dev.simplified.gson.adapter.UUIDTypeAdapter;
 import dev.simplified.gson.factory.CaptureTypeAdapterFactory;
 import dev.simplified.gson.factory.CaseInsensitiveEnumTypeAdapterFactory;
 import dev.simplified.gson.factory.CollapseTypeAdapterFactory;
+import dev.simplified.gson.factory.ExtractTypeAdapterFactory;
 import dev.simplified.gson.factory.LenientTypeAdapterFactory;
 import dev.simplified.gson.factory.OptionalTypeAdapterFactory;
 import dev.simplified.gson.factory.PostInitTypeAdapterFactory;
@@ -215,7 +216,11 @@ public class GsonSettings {
      *       {@link CaseInsensitiveEnumTypeAdapterFactory}, {@link OptionalTypeAdapterFactory},
      *       {@link SplitTypeAdapterFactory}, {@link SerializedPathTypeAdaptorFactory},
      *       {@link LenientTypeAdapterFactory}, {@link CaptureTypeAdapterFactory},
-     *       {@link CollapseTypeAdapterFactory}, {@link PostInitTypeAdapterFactory}</li>
+     *       {@link ExtractTypeAdapterFactory}, {@link CollapseTypeAdapterFactory},
+     *       {@link PostInitTypeAdapterFactory}. {@code ExtractTypeAdapterFactory} must stay
+     *       after {@code CaptureTypeAdapterFactory} so it nests outside it - both overflow
+     *       producers publish during the delegate call, and a claim made from inside
+     *       {@code @Capture} would run before the container it needs exists</li>
      *   <li><b>SPI factories</b> - every {@link TypeAdapterFactory} discovered on the
      *       classpath via {@link ServiceLoader#load(Class)
      *       ServiceLoader.load(TypeAdapterFactory.class)}. The collections module
@@ -252,6 +257,7 @@ public class GsonSettings {
                 new SerializedPathTypeAdaptorFactory(),
                 new LenientTypeAdapterFactory(),
                 new CaptureTypeAdapterFactory(),
+                new ExtractTypeAdapterFactory(),
                 new CollapseTypeAdapterFactory(),
                 new PostInitTypeAdapterFactory()
             );

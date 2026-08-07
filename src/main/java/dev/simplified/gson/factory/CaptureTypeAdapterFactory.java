@@ -73,15 +73,6 @@ import java.util.regex.Pattern;
 public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
     /**
-     * Entries a captured map could not hold, carried from the read that built the map to a
-     * later write of the same map.
-     * <p>
-     * Keyed by reference identity - the overflow belongs to one captured map, not to whatever
-     * entries it happens to hold, and a caller mutating that map afterwards must not lose it.
-     */
-    private static final WeakIdentityMap<Object, JsonObject> OVERFLOW = new WeakIdentityMap<>();
-
-    /**
      * Holds a match pattern and the corresponding {@link SerializedName @SerializedName}
      * key used inside group {@link JsonObject JsonObjects} for Gson deserialization.
      *
@@ -236,15 +227,15 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                     jsonObject.add(captureInfo.getSerializedName(), target);
 
                 // Merge overflow back
-                JsonObject overflow = OVERFLOW.get(mapObj);
+                JsonElement overflow = Overflow.find(mapObj, Overflow.Target.SOURCE_OBJECT);
 
-                if (overflow != null) {
+                if (overflow != null && overflow.isJsonObject()) {
                     JsonObject overflowTarget = captureInfo.isDescend()
                         ? jsonObject.getAsJsonObject(captureInfo.getSerializedName())
                         : jsonObject;
 
                     if (overflowTarget != null) {
-                        for (Map.Entry<String, JsonElement> entry : overflow.entrySet())
+                        for (Map.Entry<String, JsonElement> entry : overflow.getAsJsonObject().entrySet())
                             overflowTarget.add(entry.getKey(), entry.getValue());
                     }
                 }
@@ -380,11 +371,12 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
                 info.getAccessor().set(result, capturedMap);
 
-                // Store overflow
+                // Store overflow, only when non-empty - unlike @Lenient, which publishes
+                // unconditionally. Unifying either way changes behaviour a consumer can observe.
                 JsonObject overflow = overflowMaps.get(info.getFieldName());
 
-                if (overflow.size() > 0)
-                    OVERFLOW.put(capturedMap, overflow);
+                if (!overflow.isEmpty())
+                    Overflow.publish(capturedMap, Overflow.Target.SOURCE_OBJECT, overflow);
             }
 
             return result;

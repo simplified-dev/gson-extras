@@ -1643,12 +1643,6 @@ public class GsonFactoryTest {
         }
 
         @Test
-        @Disabled("""
-            Currently red - "Expected: iterable with items ["id", "kills", "stat_health"] in \
-            any order but: not matched: "lastKilledMob"". @Extract never removes its own field's \
-            serialized key from the output, so every site emits its extracted value twice - once \
-            inside the source and once at the root under the Java field name, a key no input \
-            document carries. Enable once @Extract removes its own key on write.""")
         public void extractFieldIsNotEmittedAtRoot_ok() {
             Gson gson = GSON;
 
@@ -1730,11 +1724,6 @@ public class GsonFactoryTest {
         }
 
         @Test
-        @Disabled("""
-            Currently red - "Expected: iterable with items ["armor", "equipment", "loadouts"] \
-            in any order but: not matched: "equippedArmorSet"". Both @Extract fields emit their \
-            value a second time at the root under the Java field name. \
-            Enable once @Extract removes its own key on write.""")
         public void twoExtractsNotEmittedAtRoot_ok() {
             Gson gson = GSON;
 
@@ -2885,6 +2874,117 @@ public class GsonFactoryTest {
             assertThat(result.getAsJsonObject("stats").has("bonus_broken"), is(false));
             assertThat(result.has("bonuses"), is(false));
             assertThat(result.keySet(), containsInAnyOrder("name", "stats", "bonus_health", "bonus_broken"));
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class ExtractOverCaptureModel {
+
+            private String name;
+            @Capture(filter = "^tier_")
+            private ConcurrentMap<String, Integer> tiers = Concurrent.newMap();
+            @Extract("tiers.tier_broken")
+            private String brokenTier;
+
+        }
+
+        @Test
+        public void extractOverCaptureSource_ok() {
+            Gson gson = GSON;
+
+            // No @Extract in the workspace names a @Capture field, because until the claim moved
+            // outside @Capture doing so was a silent no-op - the captured map that keys the store
+            // is built fourteen source lines after the old claim ran.
+            String json = """
+                {
+                    "name": "Player",
+                    "tier_one": 1,
+                    "tier_broken": "not_an_int"
+                }
+                """;
+
+            ExtractOverCaptureModel model = gson.fromJson(json, ExtractOverCaptureModel.class);
+
+            assertThat(model.getTiers(), aMapWithSize(1));
+            assertThat(model.getTiers(), hasEntry("one", 1));
+            assertThat(model.getBrokenTier(), is("not_an_int"));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            // the claim goes back the @Capture way - to the ROOT, under the original unstripped
+            // key - and the companion field's own key is gone
+            assertThat(result.keySet(), containsInAnyOrder("name", "tier_one", "tier_broken"));
+            assertThat(result.get("tier_broken").getAsString(), is("not_an_int"));
+            assertThat(result.has("brokenTier"), is(false));
+        }
+
+        @Test
+        public void extractOverCaptureRoundTrip_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "name": "Player",
+                    "tier_one": 1,
+                    "tier_broken": "not_an_int"
+                }
+                """;
+
+            ExtractOverCaptureModel first = gson.fromJson(json, ExtractOverCaptureModel.class);
+            ExtractOverCaptureModel second = gson.fromJson(gson.toJson(first), ExtractOverCaptureModel.class);
+
+            assertThat(second.getName(), is(first.getName()));
+            assertThat(second.getTiers(), is(first.getTiers()));
+            assertThat(second.getBrokenTier(), is("not_an_int"));
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class ExtractInsideCaptureValue {
+
+            @Lenient
+            private ConcurrentMap<String, Integer> counts = Concurrent.newMap();
+            @Extract("counts.label")
+            private String label;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class ExtractNestedInsideCaptureModel {
+
+            // ENTRY mode, so each value is read and written whole rather than affix-split - the
+            // point here is the value's own adapter stack, not @Capture's grouping
+            @Capture(grouping = Capture.Grouping.ENTRY)
+            private ConcurrentMap<String, ExtractInsideCaptureValue> nodes = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void extractNestedInsideCapture_ok() {
+            Gson gson = GSON;
+
+            // a @Capture map's value class is deserialized with a fresh top-of-chain lookup, so the
+            // value's own @Extract runs in its own adapter stack rather than the enclosing one
+            String json = """
+                {
+                    "alpha": {
+                        "counts": { "hits": 3, "label": "first" }
+                    }
+                }
+                """;
+
+            ExtractNestedInsideCaptureModel model = gson.fromJson(json, ExtractNestedInsideCaptureModel.class);
+
+            assertThat(model.getNodes(), aMapWithSize(1));
+            assertThat(model.getNodes().get("alpha").getCounts(), hasEntry("hits", 3));
+            assertThat(model.getNodes().get("alpha").getLabel(), is("first"));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+            JsonObject alpha = result.getAsJsonObject("alpha");
+
+            assertThat(alpha.keySet(), contains("counts"));
+            assertThat(alpha.getAsJsonObject("counts").get("label").getAsString(), is("first"));
         }
 
     }

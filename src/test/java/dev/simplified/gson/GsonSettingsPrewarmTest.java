@@ -118,6 +118,7 @@ class GsonSettingsPrewarmTest {
             "SerializedPathTypeAdaptorFactory",
             "LenientTypeAdapterFactory",
             "CaptureTypeAdapterFactory",
+            "ExtractTypeAdapterFactory",
             "CollapseTypeAdapterFactory",
             "PostInitTypeAdapterFactory"
         );
@@ -167,6 +168,23 @@ class GsonSettingsPrewarmTest {
             assertThat(names, hasItems("LenientTypeAdapterFactory", "CaptureTypeAdapterFactory"));
             assertThat(names.indexOf("CaptureTypeAdapterFactory"),
                 is(greaterThan(names.indexOf("LenientTypeAdapterFactory"))));
+        }
+
+        @Test
+        @DisplayName("Extract is registered after Capture, so Extract nests outside it")
+        void extractNestsOutsideCapture_ok() {
+            List<String> names = registeredFactoryNames();
+
+            // The one ordering guarantee this library asserts and nothing enforces. @Extract claims
+            // from a container both producers only publish during the delegate call, so a claim made
+            // from anywhere inside @Capture runs before that container exists and silently finds
+            // nothing. Registering between the two, or shipping an SPI factory, breaks it with no
+            // other test failure - every existing site is @Lenient-sourced and keeps passing.
+            assertThat(names, hasItems("CaptureTypeAdapterFactory", "ExtractTypeAdapterFactory"));
+            assertThat(names.indexOf("ExtractTypeAdapterFactory"),
+                is(greaterThan(names.indexOf("CaptureTypeAdapterFactory"))));
+            assertThat(names.indexOf("ExtractTypeAdapterFactory"),
+                is(lessThan(names.indexOf("PostInitTypeAdapterFactory"))));
         }
 
     }

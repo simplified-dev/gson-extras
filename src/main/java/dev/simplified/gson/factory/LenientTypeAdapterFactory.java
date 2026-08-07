@@ -33,43 +33,33 @@ import java.util.Collection;
 import java.util.Map;
 
 /**
- * Gson {@link TypeAdapterFactory} that processes {@link Lenient @Lenient} and
- * {@link Extract @Extract} annotations on Map and Collection fields.
+ * Gson {@link TypeAdapterFactory} that processes {@link Lenient @Lenient} annotations on Map and
+ * Collection fields.
  * <p>
  * {@code @Lenient} fields have incompatible entries silently filtered during
- * deserialization. Filtered entries are stored as overflow and merged back during
+ * deserialization. Filtered entries are handed to {@link Overflow} and merged back during
  * serialization to preserve round-trip fidelity. A JSON object is incompatible with a
  * collection or array value type, so such entries are filtered rather than handed to the
  * delegate, which would fail the whole read.
  * <p>
- * {@code @Extract} fields pull a specific key from a {@code @Lenient} field's
- * overflow into a typed companion field.
+ * A companion field can take one of those filtered entries for itself with
+ * {@link Extract @Extract}, which {@link ExtractTypeAdapterFactory} handles from outside this
+ * factory so that a {@code @Capture} source is reachable too.
  *
  * @see Lenient
- * @see Extract
+ * @see Overflow
  */
 @NoArgsConstructor
 public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
-
-    /**
-     * Entries filtered out of a lenient collection, carried from the read that built it to a
-     * later write of the same collection.
-     * <p>
-     * Keyed by reference identity - the overflow belongs to one collection rather than to the
-     * values it holds, so two collections that filter to equal contents keep their own, and a
-     * caller adding to one afterwards still finds its overflow.
-     */
-    private static final WeakIdentityMap<Object, JsonElement> OVERFLOW = new WeakIdentityMap<>();
 
     @Override
     public <T> @NotNull TypeAdapter<T> create(@NotNull Gson gson, @NotNull TypeToken<T> typeToken) {
         TypeAdapter<T> delegateAdapter = gson.getDelegateAdapter(this, typeToken);
         ConcurrentList<LenientFieldInfo> lenientFields = LenientFieldInfo.of(typeToken.getRawType());
-        ConcurrentList<ExtractFieldInfo> extractFields = ExtractFieldInfo.of(typeToken.getRawType());
 
-        return lenientFields.isEmpty() && extractFields.isEmpty()
+        return lenientFields.isEmpty()
             ? delegateAdapter
-            : new LenientTypeAdapter<>(gson, delegateAdapter, gson.getAdapter(JsonElement.class), lenientFields, extractFields);
+            : new LenientTypeAdapter<>(gson, delegateAdapter, gson.getAdapter(JsonElement.class), lenientFields);
     }
 
     @Getter
@@ -80,7 +70,6 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
         private final @NotNull TypeAdapter<T> delegateAdapter;
         private final @NotNull TypeAdapter<JsonElement> jsonElementAdapter;
         private final @NotNull ConcurrentList<LenientFieldInfo> lenientFields;
-        private final @NotNull ConcurrentList<ExtractFieldInfo> extractFields;
 
         @Override
         public void write(@NotNull JsonWriter out, @Nullable T value) throws IOException {
@@ -94,29 +83,6 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
             if (jsonTree.isJsonObject()) {
                 JsonObject jsonObject = jsonTree.getAsJsonObject();
 
-                // Re-inject @Extract fields back into their source overflow
-                for (ExtractFieldInfo extractInfo : this.getExtractFields()) {
-                    Object extractValue = extractInfo.getAccessor().get(value);
-
-                    if (extractValue != null) {
-                        // Find the source lenient field to get its collection instance
-                        for (LenientFieldInfo lenientInfo : this.getLenientFields()) {
-                            if (lenientInfo.getFieldName().equals(extractInfo.getSourceFieldName())) {
-                                Object collection = lenientInfo.getAccessor().get(value);
-
-                                if (collection != null) {
-                                    JsonElement overflow = OVERFLOW.computeIfAbsent(collection, () -> lenientInfo.isMap() ? new JsonObject() : new JsonArray());
-
-                                    if (overflow.isJsonObject())
-                                        overflow.getAsJsonObject().add(extractInfo.getJsonKey(), this.getGson().toJsonTree(extractValue));
-                                }
-
-                                break;
-                            }
-                        }
-                    }
-                }
-
                 // Merge overflow back into serialized JSON for each @Lenient field
                 for (LenientFieldInfo lenientInfo : this.getLenientFields()) {
                     Object collection = lenientInfo.getAccessor().get(value);
@@ -124,7 +90,7 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
                     if (collection == null)
                         continue;
 
-                    JsonElement overflow = OVERFLOW.get(collection);
+                    JsonElement overflow = Overflow.find(collection, Overflow.Target.FIELD_ELEMENT);
 
                     if (overflow == null)
                         continue;
@@ -199,34 +165,15 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
                 }
             }
 
-            // Extract phase: claim entries from overflow
-            ConcurrentList<ExtractClaim> claims = Concurrent.newList();
-
-            for (ExtractFieldInfo extractInfo : this.getExtractFields()) {
-                FieldOverflow sourceOverflow = overflows.stream()
-                    .filter(o -> o.fieldName().equals(extractInfo.getSourceFieldName()))
-                    .findFirst()
-                    .orElse(null);
-
-                if (sourceOverflow == null)
-                    continue;
-
-                if (sourceOverflow.overflow().isJsonObject()) {
-                    JsonObject overflowObj = sourceOverflow.overflow().getAsJsonObject();
-                    JsonElement claimed = overflowObj.remove(extractInfo.getJsonKey());
-
-                    if (claimed != null)
-                        claims.add(new ExtractClaim(extractInfo, claimed));
-                }
-            }
-
             // Delegate deserialization with sanitized tree
             T value = this.getDelegateAdapter().fromJsonTree(rootObject);
 
             if (value == null)
                 return null;
 
-            // Post-assign phase: store overflow and set @Extract values
+            // Publish phase: hand each field's overflow to the store, keyed by the bound container.
+            // Published unconditionally, even when empty - unlike @Capture, which publishes only a
+            // non-empty overflow. A caller can observe the empty container on a later write.
             for (LenientFieldInfo lenientInfo : this.getLenientFields()) {
                 Object collection = lenientInfo.getAccessor().get(value);
 
@@ -236,15 +183,7 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
                 overflows.stream()
                     .filter(o -> o.fieldName().equals(lenientInfo.getFieldName()))
                     .findFirst()
-                    .ifPresent(fieldOverflow -> OVERFLOW.put(collection, fieldOverflow.overflow()));
-            }
-
-            for (ExtractClaim claim : claims) {
-                try {
-                    Object extractValue = this.getGson().fromJson(claim.element(), claim.info().getAccessor().getGenericType());
-                    claim.info().getAccessor().set(value, extractValue);
-                } catch (Exception ex) {
-                }
+                    .ifPresent(fieldOverflow -> Overflow.publish(collection, Overflow.Target.FIELD_ELEMENT, fieldOverflow.overflow()));
             }
 
             return value;
@@ -374,8 +313,6 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
 
     private record FieldOverflow(@NotNull String fieldName, @NotNull JsonElement overflow) { }
 
-    private record ExtractClaim(@NotNull ExtractFieldInfo info, @NotNull JsonElement element) { }
-
     @Getter
     private static final class LenientFieldInfo {
 
@@ -446,48 +383,6 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
 
                     result.add(new LenientFieldInfo(accessor));
                 }
-            }
-
-            return result;
-        }
-
-    }
-
-    @Getter
-    private static final class ExtractFieldInfo {
-
-        private final @NotNull FieldAccessor<?> accessor;
-        private final @NotNull String path;
-        private final @NotNull String sourceFieldName;
-        private final @NotNull String jsonKey;
-
-        private ExtractFieldInfo(@NotNull FieldAccessor<?> accessor, @NotNull String path) {
-            this.accessor = accessor;
-            this.path = path;
-
-            int dotIndex = path.indexOf('.');
-
-            if (dotIndex > 0) {
-                this.sourceFieldName = path.substring(0, dotIndex);
-                this.jsonKey = path.substring(dotIndex + 1);
-            } else {
-                this.sourceFieldName = path;
-                this.jsonKey = "";
-            }
-        }
-
-        private static @NotNull ConcurrentList<ExtractFieldInfo> of(@NotNull Class<?> clazz) {
-            Reflection<?> reflection = new Reflection<>(clazz);
-            reflection.setProcessingSuperclass(false);
-            ConcurrentList<ExtractFieldInfo> result = Concurrent.newList();
-
-            for (FieldAccessor<?> accessor : reflection.getFields()) {
-                if (Modifier.isTransient(accessor.getModifiers()))
-                    continue;
-
-                accessor.getAnnotation(Extract.class).ifPresent(extract ->
-                    result.add(new ExtractFieldInfo(accessor, extract.value()))
-                );
             }
 
             return result;
