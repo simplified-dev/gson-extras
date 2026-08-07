@@ -1,6 +1,7 @@
 package dev.simplified.gson.factory;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -27,6 +28,7 @@ import java.io.IOException;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.Collection;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -37,6 +39,11 @@ import java.util.regex.Pattern;
  * Entries whose keys match a filtered {@code @Capture} field's regex have the matched
  * portion stripped. A catch-all (empty filter) collects remaining unmatched entries.
  * Incompatible entries are stored as overflow for round-trip fidelity.
+ * <p>
+ * Array-valued entries are captured when the map's value type is a collection or array;
+ * the first element decides compatibility and an empty array fits any collection. A JSON
+ * object never satisfies a collection value type, and an array never satisfies a
+ * non-collection one - either mismatch sends the entry to overflow.
  * <p>
  * When a map's value type is a class with fields (not a primitive, String, or enum),
  * the factory enters class-value grouping mode - entries are auto-grouped by affix
@@ -520,12 +527,44 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                     }
                 }
 
+                if (element.isJsonArray()) {
+                    if (!Collection.class.isAssignableFrom(rawType) && !rawType.isArray())
+                        return false;
+
+                    JsonArray array = element.getAsJsonArray();
+                    Type elementType = elementTypeOf(expectedType, rawType);
+
+                    // an empty array fits any collection; otherwise the first entry decides
+                    return array.isEmpty()
+                        || elementType == null
+                        || this.isCompatibleValue(array.get(0), elementType);
+                }
+
                 return element.isJsonObject() && !rawType.isPrimitive()
                     && !Number.class.isAssignableFrom(rawType)
-                    && rawType != String.class && rawType != Boolean.class;
+                    && rawType != String.class && rawType != Boolean.class
+                    && !Collection.class.isAssignableFrom(rawType) && !rawType.isArray();
             } catch (Exception ignored) {
                 return false;
             }
+        }
+
+        /**
+         * Resolves the element type of a collection or array type, or {@code null} when it
+         * cannot be determined - a raw {@code List} carries no element type to check against.
+         */
+        private static @Nullable Type elementTypeOf(@NotNull Type expectedType, @NotNull Class<?> rawType) {
+            if (rawType.isArray())
+                return rawType.getComponentType();
+
+            if (expectedType instanceof ParameterizedType parameterized) {
+                Type[] typeArgs = parameterized.getActualTypeArguments();
+
+                if (typeArgs.length == 1)
+                    return typeArgs[0];
+            }
+
+            return null;
         }
 
         private @NotNull String serializeMapKey(@Nullable Object key, @NotNull CaptureFieldInfo info) {
@@ -629,7 +668,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                 && !rawValueType.isEnum()
                 && rawValueType != Object.class
                 && !Map.class.isAssignableFrom(rawValueType)
-                && !java.util.Collection.class.isAssignableFrom(rawValueType);
+                && !Collection.class.isAssignableFrom(rawValueType);
 
             if (this.groupingMode) {
                 this.groupSuffixes = Concurrent.newList();

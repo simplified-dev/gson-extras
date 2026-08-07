@@ -38,7 +38,9 @@ import java.util.Map;
  * <p>
  * {@code @Lenient} fields have incompatible entries silently filtered during
  * deserialization. Filtered entries are stored as overflow and merged back during
- * serialization to preserve round-trip fidelity.
+ * serialization to preserve round-trip fidelity. A JSON object is incompatible with a
+ * collection or array value type, so such entries are filtered rather than handed to the
+ * delegate, which would fail the whole read.
  * <p>
  * {@code @Extract} fields pull a specific key from a {@code @Lenient} field's
  * overflow into a typed companion field.
@@ -310,8 +312,12 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
                     }
                 }
 
+                // a JSON object never satisfies a collection or array type - accepting one here
+                // let the delegate read it and throw "Expected BEGIN_ARRAY but was BEGIN_OBJECT"
+                // instead of filtering the entry out, which is what @Lenient promises
                 if (element.isJsonObject() && !rawType.isPrimitive() && !Number.class.isAssignableFrom(rawType)
-                    && rawType != String.class && rawType != Boolean.class)
+                    && rawType != String.class && rawType != Boolean.class
+                    && !Collection.class.isAssignableFrom(rawType) && !rawType.isArray())
                     return true;
 
                 return element.isJsonArray() && (Collection.class.isAssignableFrom(rawType) || rawType.isArray());
