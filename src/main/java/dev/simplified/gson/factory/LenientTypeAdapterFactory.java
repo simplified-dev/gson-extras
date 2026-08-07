@@ -196,7 +196,13 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
 
                 if (rawKeyType != String.class) {
                     try {
-                        this.getGson().fromJson(new com.google.gson.JsonPrimitive(key), keyType);
+                        // an enum key matching no constant converts without throwing, so the throw
+                        // alone is not enough - a null or a fallback is an unrecognized key and
+                        // belongs in overflow, not bound onto a shared entry
+                        Object converted = this.getGson().fromJson(new com.google.gson.JsonPrimitive(key), keyType);
+
+                        if (converted == null || CaseInsensitiveEnumTypeAdapterFactory.isFallback(this.getGson(), keyType, converted))
+                            return false;
                     } catch (Exception ex) {
                         return false;
                     }
@@ -246,8 +252,10 @@ public final class LenientTypeAdapterFactory implements TypeAdapterFactory {
 
                     // For enums, try to deserialize
                     if (rawType.isEnum()) {
+                        // a fallback-resolved value is an unrecognized one, so it stays overflow -
+                        // without this, marking an enum turns a lossless filter into a silent bind
                         Object result = this.getGson().fromJson(element, expectedType);
-                        return result != null;
+                        return result != null && !CaseInsensitiveEnumTypeAdapterFactory.isFallback(this.getGson(), expectedType, result);
                     }
                 }
 

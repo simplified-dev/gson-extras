@@ -13,6 +13,7 @@ import dev.simplified.collection.tuple.pair.PairOptional;
 import dev.simplified.gson.annotation.Capture;
 import dev.simplified.gson.annotation.Collapse;
 import dev.simplified.gson.annotation.Extract;
+import dev.simplified.gson.annotation.Fallback;
 import dev.simplified.gson.annotation.Key;
 import dev.simplified.gson.annotation.Lenient;
 import dev.simplified.gson.annotation.SerializedPath;
@@ -1297,6 +1298,208 @@ public class GsonFactoryTest {
             assertThat(result.keySet(), containsInAnyOrder("dojo_points_FORCE", "dojo_points_BRAND_NEW", "dojo_points_ANOTHER_NEW"));
             assertThat(result.get("dojo_points_BRAND_NEW").getAsInt(), is(4));
             assertThat(result.get("dojo_points_ANOTHER_NEW").getAsInt(), is(2));
+        }
+
+    }
+
+    // ──── CaseInsensitiveEnumTypeAdapterFactory - @Fallback ────
+
+    @Nested
+    class FallbackTests {
+
+        enum Unmarked { ALPHA, BETA }
+
+        enum Marked {
+
+            @Fallback
+            UNKNOWN,
+            ALPHA,
+            BETA
+
+        }
+
+        enum TwoMarked {
+
+            @Fallback
+            FIRST,
+            @Fallback
+            SECOND
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class UnmarkedHolder {
+
+            private Unmarked value;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class MarkedHolder {
+
+            private Marked value = Marked.ALPHA;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class TwoMarkedHolder {
+
+            private TwoMarked value;
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class MarkedValuedCaptureModel {
+
+            @Capture
+            private ConcurrentMap<String, Marked> picks = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class MarkedValuedLenientModel {
+
+            @Lenient
+            private ConcurrentMap<String, Marked> picks = Concurrent.newMap();
+
+        }
+
+        @Getter
+        @NoArgsConstructor
+        static class MarkedKeyedCaptureModel {
+
+            @Capture
+            private ConcurrentMap<Marked, Integer> picks = Concurrent.newMap();
+
+        }
+
+        @Test
+        public void unmarkedEnumUnknownValueStillBindsNull_ok() {
+            Gson gson = GSON;
+
+            // the unchanged-behaviour guarantee: an enum with no marked constant is bit-identical
+            UnmarkedHolder holder = gson.fromJson("{\"value\": \"NOT_A_CONSTANT\"}", UnmarkedHolder.class);
+
+            assertThat(holder.getValue(), is(nullValue()));
+        }
+
+        @Test
+        public void markedEnumUnknownValueBindsFallback_ok() {
+            Gson gson = GSON;
+
+            MarkedHolder holder = gson.fromJson("{\"value\": \"NOT_A_CONSTANT\"}", MarkedHolder.class);
+
+            assertThat(holder.getValue(), is(Marked.UNKNOWN));
+        }
+
+        @Test
+        public void markedEnumKnownValueUnchanged_ok() {
+            Gson gson = GSON;
+
+            assertThat(gson.fromJson("{\"value\": \"BETA\"}", MarkedHolder.class).getValue(), is(Marked.BETA));
+            // case-insensitive matching still wins over the fallback
+            assertThat(gson.fromJson("{\"value\": \"beta\"}", MarkedHolder.class).getValue(), is(Marked.BETA));
+            // and a JSON null still reads as null, so absence stays distinguishable
+            assertThat(gson.fromJson("{\"value\": null}", MarkedHolder.class).getValue(), is(nullValue()));
+        }
+
+        @Test
+        public void markedEnumWriteUnchanged_ok() {
+            Gson gson = GSON;
+
+            MarkedHolder holder = gson.fromJson("{\"value\": \"NOT_A_CONSTANT\"}", MarkedHolder.class);
+
+            // write is not edited at all - the fallback serializes as its own name, so the original
+            // wire value is NOT recovered. The marker types the miss; it does not remember it
+            assertThat(gson.fromJson(gson.toJson(holder), JsonObject.class).get("value").getAsString(), is("UNKNOWN"));
+        }
+
+        @Test
+        public void twoMarkedConstants_throws() {
+            Gson gson = GSON;
+
+            JsonException thrown = assertThrows(JsonException.class,
+                () -> gson.fromJson("{\"value\": \"FIRST\"}", TwoMarkedHolder.class));
+
+            assertThat(thrown.getMessage(), containsString("more than one fallback constant"));
+        }
+
+        @Test
+        public void markedEnumValuedCaptureOverflowStaysLossless_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "a": "ALPHA",
+                    "b": "NOT_A_CONSTANT"
+                }
+                """;
+
+            MarkedValuedCaptureModel model = gson.fromJson(json, MarkedValuedCaptureModel.class);
+
+            // companion guard 2. Without it the read now returns UNKNOWN, result != null becomes
+            // true, the entry binds onto the marker and the wire value is gone - lossless silently
+            // becomes lossy for every consumer on the shared pin
+            assertThat(model.getPicks(), aMapWithSize(1));
+            assertThat(model.getPicks(), hasEntry("a", Marked.ALPHA));
+            assertThat(model.getPicks(), not(hasKey("b")));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.get("b").getAsString(), is("NOT_A_CONSTANT"));
+        }
+
+        @Test
+        public void markedEnumValuedLenientOverflowStaysLossless_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "picks": {
+                        "a": "ALPHA",
+                        "b": "NOT_A_CONSTANT"
+                    }
+                }
+                """;
+
+            MarkedValuedLenientModel model = gson.fromJson(json, MarkedValuedLenientModel.class);
+
+            // companion guard 4, on the branch that had no coverage anywhere before this work
+            assertThat(model.getPicks(), aMapWithSize(1));
+            assertThat(model.getPicks(), hasEntry("a", Marked.ALPHA));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.getAsJsonObject("picks").get("b").getAsString(), is("NOT_A_CONSTANT"));
+        }
+
+        @Test
+        public void markedEnumKeyStillDivertsToOverflow_ok() {
+            Gson gson = GSON;
+
+            String json = """
+                {
+                    "ALPHA": 1,
+                    "not_a_constant": 2
+                }
+                """;
+
+            MarkedKeyedCaptureModel model = gson.fromJson(json, MarkedKeyedCaptureModel.class);
+
+            // companion guard 1. A fallback-resolved KEY must stay diverted, or the marker
+            // reintroduces the collapse - and worse, an unknown key would overwrite a real entry
+            assertThat(model.getPicks(), aMapWithSize(1));
+            assertThat(model.getPicks(), hasEntry(Marked.ALPHA, 1));
+            assertThat(model.getPicks(), not(hasKey(Marked.UNKNOWN)));
+
+            JsonObject result = gson.fromJson(gson.toJson(model), JsonObject.class);
+
+            assertThat(result.get("not_a_constant").getAsInt(), is(2));
         }
 
     }

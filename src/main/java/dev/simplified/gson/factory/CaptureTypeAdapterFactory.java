@@ -522,12 +522,14 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
                 if (rawKeyType != String.class) {
                     try {
-                        // compatible only if the conversion neither throws NOR yields null. An enum
-                        // key matching no constant returns null without throwing, so asking only
-                        // "did it throw" judges it compatible and every unmatched key in the field
-                        // then binds onto the same null with last-write-wins. This brings the key
-                        // check into line with the value check below, which already tests for null
-                        if (this.getGson().fromJson(new JsonPrimitive(key), info.getKeyType()) == null)
+                        // compatible only if the conversion neither throws, NOR yields null, NOR
+                        // yields the enum's fallback. An enum key matching no constant returns null
+                        // without throwing, so asking only "did it throw" judges it compatible and
+                        // every unmatched key in the field then binds onto the same null with
+                        // last-write-wins. A fallback is the same miss wearing a constant.
+                        Object converted = this.getGson().fromJson(new JsonPrimitive(key), info.getKeyType());
+
+                        if (converted == null || CaseInsensitiveEnumTypeAdapterFactory.isFallback(this.getGson(), info.getKeyType(), converted))
                             return false;
                     } catch (Exception ex) {
                         return false;
@@ -576,8 +578,10 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                     }
 
                     if (rawType.isEnum()) {
+                        // a fallback-resolved value is an unrecognized one, so it stays overflow -
+                        // without this, marking an enum turns a lossless divert into a silent bind
                         Object result = this.getGson().fromJson(element, expectedType);
-                        return result != null;
+                        return result != null && !CaseInsensitiveEnumTypeAdapterFactory.isFallback(this.getGson(), expectedType, result);
                     }
                 }
 
