@@ -48,7 +48,10 @@ import java.util.regex.Pattern;
  * When a map's value type is a class with fields (not a primitive, String, or enum),
  * the factory enters class-value grouping mode - entries are auto-grouped by affix
  * matching against the value class's field serialized names, then each group is
- * deserialized as an instance of that class.
+ * deserialized as an instance of that class. An entry whose key matches no affix and
+ * whose value is already a complete object is read as that object, so a map of
+ * key to nested object needs no affixes at all. {@code @Capture(grouping = ...)}
+ * overrides the inferred mode when a key could collide with an affix.
  * <p>
  * Affix direction is determined by the field's serialized name:
  * <ul>
@@ -450,6 +453,17 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                             groups.put(groupKey, new JsonObject());
 
                         groups.get(groupKey).add("", entry.getValue());
+                    } else if (entry.getValue().isJsonObject()) {
+                        // key -> complete object: there are no affixes to split, the value
+                        // already is the instance. Merging rather than replacing lets a base
+                        // key carrying a nested object coexist with affixed siblings.
+                        if (!groups.containsKey(strippedKey))
+                            groups.put(strippedKey, new JsonObject());
+
+                        JsonObject group = groups.get(strippedKey);
+
+                        for (Map.Entry<String, JsonElement> field : entry.getValue().getAsJsonObject().entrySet())
+                            group.add(field.getKey(), field.getValue());
                     }
                 }
             }
@@ -633,6 +647,9 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
             this.descend = accessor.getAnnotation(Capture.class)
                 .map(Capture::descend)
                 .orElse(false);
+            Capture.Grouping grouping = accessor.getAnnotation(Capture.class)
+                .map(Capture::grouping)
+                .orElse(Capture.Grouping.AUTO);
             this.pattern = hasFilter() ? Pattern.compile(this.filter) : null;
             this.literalPrefix = hasFilter() ? this.filter.replaceAll("^\\^", "").replaceAll("\\$$", "") : "";
 
@@ -661,7 +678,7 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
 
             // Determine if grouping mode (value is a class with fields, not primitive/String/enum/Map/Collection)
             Class<?> rawValueType = getRawType(this.valueType);
-            this.groupingMode = !rawValueType.isPrimitive()
+            boolean inferredGrouping = !rawValueType.isPrimitive()
                 && !Number.class.isAssignableFrom(rawValueType)
                 && rawValueType != String.class
                 && rawValueType != Boolean.class
@@ -669,6 +686,11 @@ public final class CaptureTypeAdapterFactory implements TypeAdapterFactory {
                 && rawValueType != Object.class
                 && !Map.class.isAssignableFrom(rawValueType)
                 && !Collection.class.isAssignableFrom(rawValueType);
+
+            this.groupingMode = switch (grouping) {
+                case ENTRY -> false;
+                case AUTO -> inferredGrouping;
+            };
 
             if (this.groupingMode) {
                 this.groupSuffixes = Concurrent.newList();

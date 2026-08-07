@@ -115,4 +115,41 @@ public @interface Capture {
      */
     boolean descend() default false;
 
+    /**
+     * Selects how captured entries are turned into map values.
+     * <p>
+     * {@link Grouping#AUTO} infers the mode from the map's value type, which is the
+     * historical behaviour and remains the default. Set this explicitly when a key
+     * could collide with an affix - auto-suffix turns a plain field named
+     * {@code progress} into {@code _progress}, so a key like {@code daily_progress}
+     * would be split apart rather than read as a whole value.
+     *
+     * @return the grouping mode for this field
+     */
+    @NotNull Grouping grouping() default Grouping.AUTO;
+
+    /**
+     * How a captured JSON entry maps onto a map value.
+     * <p>
+     * There is deliberately no constant that forces grouping on. Affixes are derived from
+     * the value class's declared fields, so a {@code Map}, {@code Collection}, primitive or
+     * enum value type has none to match and would capture nothing, while a class value type
+     * is already grouped by {@link #AUTO}.
+     */
+    enum Grouping {
+
+        /**
+         * Infers the mode from the map's value type - grouped for a class with fields,
+         * {@link #ENTRY} for a primitive, {@code String}, enum, {@code Map} or
+         * {@code Collection}.
+         */
+        AUTO,
+
+        /**
+         * Reads each entry's value as a complete instance, with no affix splitting.
+         */
+        ENTRY
+
+    }
+
 }
