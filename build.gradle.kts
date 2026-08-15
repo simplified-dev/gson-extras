@@ -18,9 +18,9 @@ repositories {
 
 dependencies {
     // Simplified Libraries
-    api("com.github.simplified-dev:collections") { version { strictly("7699a31") } }
-    api("com.github.simplified-dev:utils") { version { strictly("036cc09") } }
-    api("com.github.simplified-dev:reflection") { version { strictly("33b2f05") } }
+    api("com.github.simplified-dev:collections") { version { strictly("23f01b6") } }
+    api("com.github.simplified-dev:utils") { version { strictly("381e317") } }
+    api("com.github.simplified-dev:reflection") { version { strictly("d02f3ea") } }
 
     // JetBrains Annotations
     api(libs.annotations)
@@ -28,11 +28,11 @@ dependencies {
     // Gson
     api(libs.gson)
 
-    // Lombok Annotations
-    compileOnly(libs.lombok)
-    annotationProcessor(libs.lombok)
-    testCompileOnly(libs.lombok)
-    testAnnotationProcessor(libs.lombok)
+    // Simplified Annotations
+    compileOnly(libs.simplified.annotations)
+    annotationProcessor(libs.simplified.annotations)
+    testCompileOnly(libs.simplified.annotations)
+    testAnnotationProcessor(libs.simplified.annotations)
 
     // Tests
     testImplementation(libs.hamcrest)

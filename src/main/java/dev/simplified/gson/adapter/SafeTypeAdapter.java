@@ -4,6 +4,8 @@ import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
+import dev.simplified.annotations.AccessLevel;
+import dev.simplified.annotations.RequiredArgsConstructor;
 import dev.simplified.gson.exception.JsonException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -25,21 +27,13 @@ import java.io.IOException;
  *
  * @param <T> the value type this adapter reads and writes
  */
+@RequiredArgsConstructor(access = AccessLevel.PROTECTED)
 public abstract class SafeTypeAdapter<T> extends TypeAdapter<T> {
 
     /**
      * Human-readable label for the value type, interpolated into the malformed-input message.
      */
     private final @NotNull String typeLabel;
-
-    /**
-     * Constructs a new {@code SafeTypeAdapter} labelled with the given type name.
-     *
-     * @param typeLabel the value type label used in malformed-input messages
-     */
-    protected SafeTypeAdapter(@NotNull String typeLabel) {
-        this.typeLabel = typeLabel;
-    }
 
     /**
      * Writes a non-null value. Never invoked with {@code null} - the base emits

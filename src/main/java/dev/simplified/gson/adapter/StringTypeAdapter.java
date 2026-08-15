@@ -3,9 +3,9 @@ package dev.simplified.gson.adapter;
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
+import dev.simplified.annotations.RequiredArgsConstructor;
 import dev.simplified.gson.GsonSettings;
 import dev.simplified.util.StringUtil;
-import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

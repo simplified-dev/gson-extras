@@ -9,6 +9,10 @@ import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
+import dev.simplified.annotations.AccessLevel;
+import dev.simplified.annotations.Getter;
+import dev.simplified.annotations.NoArgsConstructor;
+import dev.simplified.annotations.RequiredArgsConstructor;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.collection.ConcurrentList;
 import dev.simplified.collection.ConcurrentMap;
@@ -16,8 +20,6 @@ import dev.simplified.gson.annotation.Collapse;
 import dev.simplified.gson.annotation.Key;
 import dev.simplified.reflection.Reflection;
 import dev.simplified.reflection.accessor.FieldAccessor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -79,19 +81,13 @@ public final class CollapseTypeAdapterFactory implements TypeAdapterFactory {
         return new CollapseTypeAdapter<>(gson, delegateAdapter, gson.getAdapter(JsonElement.class), collapseFields);
     }
 
+    @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
     private static class CollapseTypeAdapter<T> extends TypeAdapter<T> {
 
         private final @NotNull Gson gson;
         private final @NotNull TypeAdapter<T> delegateAdapter;
         private final @NotNull TypeAdapter<JsonElement> jsonElementAdapter;
         private final @NotNull ConcurrentList<CollapseFieldInfo> collapseFields;
-
-        private CollapseTypeAdapter(@NotNull Gson gson, @NotNull TypeAdapter<T> delegateAdapter, @NotNull TypeAdapter<JsonElement> jsonElementAdapter, @NotNull ConcurrentList<CollapseFieldInfo> collapseFields) {
-            this.gson = gson;
-            this.delegateAdapter = delegateAdapter;
-            this.jsonElementAdapter = jsonElementAdapter;
-            this.collapseFields = collapseFields;
-        }
 
         @Override
         public void write(@NotNull JsonWriter out, @Nullable T value) throws IOException {
