@@ -2,12 +2,12 @@ package dev.simplified.gson.factory;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
+import dev.simplified.annotations.Getter;
+import dev.simplified.annotations.NoArgsConstructor;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.collection.ConcurrentMap;
 import dev.simplified.gson.GsonSettings;
 import dev.simplified.gson.annotation.Capture;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 

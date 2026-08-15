@@ -7,15 +7,15 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.reflect.TypeToken;
+import dev.simplified.annotations.AccessLevel;
+import dev.simplified.annotations.EqualsAndHashCode;
+import dev.simplified.annotations.RequiredArgsConstructor;
 import dev.simplified.collection.ConcurrentList;
 import dev.simplified.collection.ConcurrentMap;
 import dev.simplified.collection.tuple.pair.PairOptional;
 import dev.simplified.collection.tuple.pair.PairStream;
 import dev.simplified.collection.tuple.single.SingleStream;
 import dev.simplified.gson.exception.JsonException;
-import lombok.AccessLevel;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

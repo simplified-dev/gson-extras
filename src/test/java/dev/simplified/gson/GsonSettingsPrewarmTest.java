@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.TypeAdapter;
 import com.google.gson.TypeAdapterFactory;
 import com.google.gson.reflect.TypeToken;
+import dev.simplified.annotations.AccessLevel;
+import dev.simplified.annotations.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -208,14 +210,11 @@ class GsonSettingsPrewarmTest {
      * Test factory that increments a counter when asked for an adapter for a specific raw
      * type, then defers to Gson's default reflective adapter for that type.
      */
+    @RequiredArgsConstructor(access = AccessLevel.PACKAGE)
     private static final class CountingFactory implements TypeAdapterFactory {
 
         final AtomicInteger hits = new AtomicInteger();
         private final Class<?> watch;
-
-        CountingFactory(Class<?> watch) {
-            this.watch = watch;
-        }
 
         @Override
         public <T> TypeAdapter<T> create(Gson gson, TypeToken<T> type) {

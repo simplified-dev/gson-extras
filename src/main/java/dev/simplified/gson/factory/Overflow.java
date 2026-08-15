@@ -2,12 +2,11 @@ package dev.simplified.gson.factory;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.simplified.annotations.UtilityClass;
 import dev.simplified.collection.Concurrent;
 import dev.simplified.gson.annotation.Capture;
 import dev.simplified.gson.annotation.Extract;
 import dev.simplified.gson.annotation.Lenient;
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,7 +29,7 @@ import java.util.function.Supplier;
  *
  * @see WeakIdentityMap
  */
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@UtilityClass
 final class Overflow {
 
     private static final WeakIdentityMap<Object, Entry> ENTRIES = new WeakIdentityMap<>();
