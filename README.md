@@ -229,7 +229,7 @@ src/main/java/dev/simplified/gson/
 |------------|---------|-------|
 | [Gson](https://github.com/google/gson) | 2.11.0 | API |
 | [JetBrains Annotations](https://github.com/JetBrains/java-annotations) | 26.0.2 | API |
-| [Lombok](https://projectlombok.org/) | 1.18.36 | Compile-only |
+| [Simplified Annotations](https://github.com/simplified-dev/annotations) | 2.5.1 | Compile-only |
 | [collections](https://github.com/Simplified-Dev/collections) | master-SNAPSHOT | API (Simplified-Dev) |
 | [utils](https://github.com/Simplified-Dev/utils) | master-SNAPSHOT | API (Simplified-Dev) |
 | [reflection](https://github.com/Simplified-Dev/reflection) | master-SNAPSHOT | API (Simplified-Dev) |
