@@ -42,11 +42,15 @@ import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.UUID;
-import java.util.stream.StreamSupport;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Immutable configuration for building {@link Gson} instances.
@@ -226,9 +230,9 @@ public class GsonSettings {
      *       {@code LenientTypeAdapterFactory} for the mirror reason: inside it, {@code @Lenient}
      *       would see the uncollapsed wrappers, judge every one incompatible with the declared
      *       value type and divert the whole field to overflow before the collapse ran</li>
-     *   <li><b>SPI factories</b> - every {@link TypeAdapterFactory} discovered on the
-     *       classpath via {@link ServiceLoader#load(Class)
-     *       ServiceLoader.load(TypeAdapterFactory.class)}. The collections module
+     *   <li><b>SPI factories</b> - every {@link TypeAdapterFactory} a {@link ServiceLoader}
+     *       finds through the class loader that loaded this class or the current thread's
+     *       context class loader, each provider class once. The collections module
      *       ships {@code dev.simplified.collection.gson.ConcurrentTypeAdapterFactory}
      *       through this SPI to teach Gson the {@code Concurrent*} interfaces; downstream
      *       modules can ship their own factory by adding a
@@ -236,7 +240,7 @@ public class GsonSettings {
      * </ul>
      * <p>
      * After the built-ins and SPI factories are registered, every {@link GsonContributor}
-     * discovered on the classpath via {@link ServiceLoader} is applied in ascending
+     * found through the same two class loaders is applied in ascending
      * {@link GsonContributor#priority() priority} order. Downstream modules contribute
      * their own type adapters or exclusion strategies by shipping a
      * {@code META-INF/services/dev.simplified.gson.GsonContributor} service file.
@@ -268,13 +272,38 @@ public class GsonSettings {
                 new PostInitTypeAdapterFactory()
             );
 
-        ServiceLoader.load(TypeAdapterFactory.class).forEach(builder::withFactories);
+        providers(TypeAdapterFactory.class).forEach(builder::withFactories);
 
-        StreamSupport.stream(ServiceLoader.load(GsonContributor.class).spliterator(), false)
+        providers(GsonContributor.class)
             .sorted(Comparator.comparingInt(GsonContributor::priority))
             .forEach(builder::apply);
 
         return builder.build();
+    }
+
+    /**
+     * Discovers every provider of {@code service} visible to the class loader that loaded this
+     * class or to the current thread's context class loader, instantiating each provider class
+     * once.
+     * <p>
+     * The defining loader is searched first. A library shaded into a plugin jar is loaded by the
+     * host's plugin class loader, while the context class loader stays on the host's own loader
+     * and sees none of the service files shaded beside it. The context loader is searched second,
+     * for a host that keeps this class in a parent loader and names a child holding the providers
+     * as the context.
+     *
+     * @param service the service type to discover
+     * @return the providers, defining loader's first, in discovery order
+     */
+    private static <S> @NotNull Stream<S> providers(@NotNull Class<S> service) {
+        return Stream.of(GsonSettings.class.getClassLoader(), Thread.currentThread().getContextClassLoader())
+            .filter(Objects::nonNull)
+            .distinct()
+            .flatMap(loader -> ServiceLoader.load(service, loader).stream())
+            .collect(Collectors.toMap(provider -> provider.type().getName(), Function.identity(), (first, second) -> first, LinkedHashMap::new))
+            .values()
+            .stream()
+            .map(ServiceLoader.Provider::get);
     }
 
     /**
