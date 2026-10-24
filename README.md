@@ -18,6 +18,7 @@ Custom Gson `TypeAdapter` implementations, annotation-driven `TypeAdapterFactory
 - [Usage](#usage)
   - [Quick Start](#quick-start)
   - [Custom Configuration](#custom-configuration)
+  - [Service Discovery](#service-discovery)
   - [Individual Adapters](#individual-adapters)
 - [Architecture](#architecture)
   - [Package Overview](#package-overview)
@@ -170,6 +171,93 @@ Gson gson = GsonSettings.builder()
     .build()
     .create();
 ```
+
+### Service Discovery
+
+After registering its built-in adapters and factories, `GsonSettings.defaults()`
+reads two service files from every jar it can see:
+
+| Service file | Registers |
+|--------------|-----------|
+| `META-INF/services/com.google.gson.TypeAdapterFactory` | Each listed `TypeAdapterFactory`, after the built-in factories. The `collections` module ships `ConcurrentTypeAdapterFactory` this way, which is what lets Gson build `ConcurrentList`, `ConcurrentSet`, `ConcurrentQueue`, `ConcurrentDeque` and `ConcurrentMap` fields |
+| `META-INF/services/dev.simplified.gson.GsonContributor` | Each listed `GsonContributor`, applied in ascending `priority()` order |
+
+Both are looked up through the class loader that loaded `GsonSettings` first and
+the thread's context class loader second, and each provider class is registered
+once.
+
+A module contributes its own adapters by implementing `GsonContributor`:
+
+```java
+package com.example.gson;
+
+import dev.simplified.gson.GsonContributor;
+import dev.simplified.gson.GsonSettings;
+
+public final class ExampleGsonContributor implements GsonContributor {
+
+    @Override
+    public void contribute(GsonSettings.Builder builder) {
+        builder.withTypeAdapter(Money.class, new MoneyTypeAdapter());
+    }
+
+}
+```
+
+and listing it in `src/main/resources/META-INF/services/dev.simplified.gson.GsonContributor`:
+
+```
+com.example.gson.ExampleGsonContributor
+```
+
+> [!WARNING]
+> **Shading into a fat jar.** `collections` ships the `TypeAdapterFactory` service
+> file, and several downstream modules each ship a `GsonContributor` one at the
+> same path. A shaded jar that does not merge service files keeps one copy of
+> each path and silently drops the rest. The symptom is
+> `JsonIOException: Interfaces can't be instantiated! ... ConcurrentList`, or a
+> module's types being (de)serialized reflectively instead of through its
+> adapters.
+
+Merge service files when shading. With the [Shadow](https://gradleup.com/shadow/)
+plugin in `build.gradle.kts`:
+
+```kotlin
+tasks.shadowJar {
+    mergeServiceFiles()
+}
+```
+
+<details>
+<summary>Gradle (Groovy)</summary>
+
+```groovy
+shadowJar {
+    mergeServiceFiles()
+}
+```
+
+</details>
+
+<details>
+<summary>Maven</summary>
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-shade-plugin</artifactId>
+    <configuration>
+        <transformers>
+            <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+        </transformers>
+    </configuration>
+</plugin>
+```
+
+</details>
+
+Both transformers also apply any `relocate` rules to the service files, so
+relocating a package keeps its providers discoverable.
 
 ### Individual Adapters
 
